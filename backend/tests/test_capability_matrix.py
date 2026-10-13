@@ -46,7 +46,9 @@ def test_registry_covers_all_routing_fields():
     assert full_minute["field"] == "full_minute_data_provider"
     assert full_minute["tf_tier"] == "expert"
     for cap in CAPABILITY_REGISTRY:
-        assert cap["default"] == "tickflow"
+        # 默认数据源: GM 优先 ( GM 未声明 full_minute, 该能力保持 tickflow )
+        expected = "tickflow" if cap["id"] == "full_minute" else "gm"
+        assert cap["default"] == expected
         assert cap["tf_tier"] in ("none", "starter", "pro", "expert")
         assert "follow" not in cap
 

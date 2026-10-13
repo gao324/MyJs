@@ -25,9 +25,8 @@ const Branding = lazy(() => import('./pages/Branding').then(m => ({ default: m.B
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })))
 const Regime = lazy(() => import('./pages/Regime').then(m => ({ default: m.Regime })))
 const Dev = lazy(() => import('./pages/Dev').then(m => ({ default: m.Dev })))
-// Onboarding 只在首次使用时进入, Auth 只在登录页用到 — 均改按需加载
+// Onboarding 只在首次使用时进入 — 按需加载 (登录页已下线, 见 /login 路由注释)
 const Onboarding = lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
-const Auth = lazy(() => import('./pages/Auth').then(m => ({ default: m.Auth })))
 
 const CORE_ROUTE_PATHS = new Set([
   '/',
@@ -113,12 +112,9 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    // 开箱即用模式: 登录页已下线, 旧 /login 链接重定向首页 (Auth 组件保留便于恢复)。
     path: '/login',
-    element: (
-      <Suspense fallback={<RouteFallback />}>
-        <Auth />
-      </Suspense>
-    ),
+    element: <Navigate to="/" replace />,
   },
   {
     path: '/',

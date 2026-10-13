@@ -1,6 +1,6 @@
 """交易日探针 (trading_day oracle) 与两个消费方接入的测试。
 
-不依赖真实网络: 探测函数 (_probe_fuyao / _probe_tickflow) 全部 monkeypatch。
+不依赖真实网络: 探测函数 (_probe_plugin_calendar / _probe_tickflow) 全部 monkeypatch。
 覆盖: 周末零成本直判、探测链优先级 (fuyao 日历权威, 无开盘缓冲问题)、
 tickflow 戳的 OR 语义与开盘缓冲窗、失败/无权限 → None、TTL 缓存、
 实时行情门控与分钟增量 gate_reason 的 holiday 分支。
@@ -27,7 +27,7 @@ def _clean_cache():
 
 def _no_probes(monkeypatch):
     """探测函数替换为爆炸 — 用于验证未被打到。"""
-    monkeypatch.setattr(trading_day, "_probe_fuyao", lambda now: (_ for _ in ()).throw(AssertionError("不应探测")))
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", lambda now: (_ for _ in ()).throw(AssertionError("不应探测")))
     monkeypatch.setattr(trading_day, "_probe_tickflow", lambda now: (_ for _ in ()).throw(AssertionError("不应探测")))
 
 
@@ -46,7 +46,7 @@ def test_weekend_returns_false_without_probing(monkeypatch):
 def test_fuyao_calendar_is_authoritative_even_before_open(monkeypatch):
     """fuyao 日历结论无时段依赖: 开盘缓冲窗内也直接生效。"""
     holiday_mon = datetime(2026, 9, 7, 9, 31, tzinfo=CN)  # 周一 (缓冲窗内)
-    monkeypatch.setattr(trading_day, "_probe_fuyao", lambda now: False)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", lambda now: False)
     monkeypatch.setattr(
         trading_day, "_probe_tickflow",
         lambda now: (_ for _ in ()).throw(AssertionError("fuyao 已有结论不应继续探测")),
@@ -56,16 +56,42 @@ def test_fuyao_calendar_is_authoritative_even_before_open(monkeypatch):
 
 def test_chain_falls_through_to_tickflow_when_fuyao_unknown(monkeypatch):
     monday = datetime(2026, 9, 7, 10, 0, tzinfo=CN)
-    monkeypatch.setattr(trading_day, "_probe_fuyao", lambda now: None)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", lambda now: None)
     monkeypatch.setattr(trading_day, "_probe_tickflow", lambda now: True)
     assert is_trading_day(monday) is True
 
 
 def test_all_probes_unknown_returns_none(monkeypatch):
     monday = datetime(2026, 9, 7, 10, 0, tzinfo=CN)
-    monkeypatch.setattr(trading_day, "_probe_fuyao", lambda now: None)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", lambda now: None)
     monkeypatch.setattr(trading_day, "_probe_tickflow", lambda now: None)
     assert is_trading_day(monday) is None
+
+
+def test_plugin_calendar_prefers_gm_over_fuyao(monkeypatch):
+    """插件日历按 gm → fuyao 顺序取首个有效结论; gm 空集时才看 fuyao。"""
+    import app.data_providers.custom as custom_sources
+
+    monday = datetime(2026, 9, 7, 10, 0, tzinfo=CN)
+
+    class _P:
+        def __init__(self, days):
+            self._days = days
+
+        def trading_days(self):
+            return self._days
+
+    providers = {"gm": _P({monday.date()}), "fuyao": _P(set())}
+    monkeypatch.setattr(custom_sources, "is_custom_provider", lambda name: name in providers)
+    monkeypatch.setattr(custom_sources, "get_provider", lambda name: providers[name])
+    assert trading_day._probe_plugin_calendar(monday) is True
+
+    providers["gm"] = _P(set())  # gm 空 → 回退 fuyao
+    providers["fuyao"] = _P({monday.date()})
+    assert trading_day._probe_plugin_calendar(monday) is True
+
+    providers["fuyao"] = _P(set())
+    assert trading_day._probe_plugin_calendar(monday) is None
 
 
 # ---- tickflow 戳语义 ----
@@ -84,7 +110,7 @@ def test_tickflow_stale_stamp_before_buffer_is_unknown(monkeypatch):
         quotes = _FakeQuotes()
 
     monkeypatch.setattr(tf_client_mod, "get_client", lambda: _FakeClient())
-    monkeypatch.setattr(trading_day, "_probe_fuyao", lambda now: None)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", lambda now: None)
     assert trading_day._probe_tickflow(monday_935) is None
 
 
@@ -145,7 +171,7 @@ def test_verdict_cached_within_ttl(monkeypatch):
         calls["n"] += 1
         return True
 
-    monkeypatch.setattr(trading_day, "_probe_fuyao", _counting_probe)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", _counting_probe)
     assert is_trading_day(monday) is True
     assert is_trading_day(monday) is True
     assert is_trading_day(monday) is True
@@ -160,7 +186,7 @@ def test_unknown_verdict_retries_after_short_ttl(monkeypatch):
         calls["n"] += 1
         return None
 
-    monkeypatch.setattr(trading_day, "_probe_fuyao", _counting_probe)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", _counting_probe)
     monkeypatch.setattr(trading_day, "_probe_tickflow", lambda now: None)  # 隔离真实网络
     assert is_trading_day(monday) is None
     # 手动把缓存时间拨回 10 分钟前 (超过 unknown TTL 300s) → 重探
@@ -269,7 +295,7 @@ def test_unknown_verdict_is_cached_within_short_ttl(monkeypatch):
         calls["tickflow"] += 1
         return None
 
-    monkeypatch.setattr(trading_day, "_probe_fuyao", _fuyao)
+    monkeypatch.setattr(trading_day, "_probe_plugin_calendar", _fuyao)
     monkeypatch.setattr(trading_day, "_probe_tickflow", _tickflow)
 
     assert is_trading_day(monday) is None

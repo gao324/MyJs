@@ -204,7 +204,7 @@ _CAL: tuple[float, set[date] | None] = (0.0, None)  # (取数时刻, 交易日�
 
 
 def _trading_calendar() -> set[date] | None:
-    """A 股交易日集合 (fuyao 近一年); 从未取到过 → None (调用方回退周几近似)。
+    """A 股交易日集合 (gm 优先, fuyao 备选); 从未取到过 → None (调用方回退周几近似)。
 
     与 trading_day.is_trading_day 探测链第 1 环同源; 这里需要**任意历史日**
     的判定, 故直接消费整年集合。线程安全 (gate / boot / 修复管道共用)。
@@ -219,10 +219,16 @@ def _trading_calendar() -> set[date] | None:
     try:
         from app.data_providers import custom as custom_sources
 
-        if custom_sources.is_custom_provider("fuyao"):
-            raw = custom_sources.get_provider("fuyao").trading_days()
+        for name in ("gm", "fuyao"):
+            if not custom_sources.is_custom_provider(name):
+                continue
+            provider = custom_sources.get_provider(name)
+            if not hasattr(provider, "trading_days"):
+                continue
+            raw = provider.trading_days()
             if raw:
                 fetched = set(raw)
+                break
     except Exception:  # noqa: BLE001 — 日历不可用不上抛, 回退 stale/近似
         fetched = None
     with _CAL_LOCK:

@@ -31,7 +31,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "日K",
         "desc": "历史K线与实时覆写",
         "field": "daily_data_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "none",
     },
     {
@@ -39,7 +39,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "除权因子",
         "desc": "前复权计算基准",
         "field": "adj_factor_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "starter",
         # 独立路由 (曾经的「跟随日K」特殊值已下线: 每个能力单独配置,
         # 复权口径一致性改由未来的一致性警示保障, 不做路由耦合)
@@ -49,7 +49,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "实时行情",
         "desc": "全市场实时快照",
         "field": "realtime_data_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "starter",
     },
     {
@@ -57,7 +57,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "分钟K",
         "desc": "分时图与分钟回测",
         "field": "minute_data_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "pro",
     },
     {
@@ -65,7 +65,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "五档盘口",
         "desc": "连板梯队封单与盘口深度",
         "field": "depth5_data_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "pro",
     },
     {
@@ -73,7 +73,7 @@ CAPABILITY_REGISTRY: list[dict] = [
         "label": "财务数据",
         "desc": "财务指标与三大报表",
         "field": "financial_data_provider",
-        "default": "tickflow",
+        "default": "gm",
         "tf_tier": "expert",
     },
     {

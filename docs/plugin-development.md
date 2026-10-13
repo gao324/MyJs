@@ -323,6 +323,12 @@ uv run --extra dev python -m ruff check app/plugins/<your_plugin>/ tests/test_<y
   - `client.py` — 原生层封装(lib 私有物化 + token 注入双 ini + `TDX_AI_DATA_LIB` 指向、空闲首连 "Invalid server response" 重试包装、股票池 12h 缓存)
   - `provider.py` — Provider 实现(快照昨收=LastClose/高低=Max/Min 字段映射、涨跌幅 (Now-LastClose)/LastClose 小数制、RefreshTime 北京墙钟→epoch ms、软失败)
   - `probe.py` — 候选 Key 探测的独立子进程(原生 DLL 每进程单 Key): 分阶段进度留痕定位原生层死点; 因 TDX 会话按 IP 复用(错误 Key 在活跃会话下也能拉数), 探测语义为格式+连通性而非 Key 真伪, 真伪由首次实拉暴露
+- **`backend/app/plugins/gm/`** — 掘金量化数据服务(runtime: python; gm 3.0.190 钉死 numpy 1.x / pandas 1.x, 与主 venv 冲突, 故经独立 venv `data/gm-env` 子进程桥接, 后端主流程零依赖变更)
+  - 提供 `realtime`(股票池 + ETF 池 universe 日缓存 → current() 批量快照, 全市场约 6800 条/28s)、`depth5`(tick 自带五档 quotes, 股 floor /100 → 手)、`daily`(history 1d ADJUST_NONE 原始价多标的批量, stock/etf/index 均可, volume 股→手, amount 元透传, eob 上海时区归日期)、`adj_factor`(get_history_symbol 每日累计后复权因子 → 相邻交易日比值即单事件比值; 无事件明细, dividend 等列置空)、`minute`(history 60s 仅 1m, eob → 北京墙钟 naive)、`full_minute`(修复轮 `get_intraday_batch` + 增量轮 `get_intraday_latest`, 均为逐批 history)、`financial`(三大表 + prime/deriv 指标 + daily_basic 股本, 均为单标的免费函数, 全市场初装慢); Key 为 GM Token (掘金终端密钥管理生成), 设置页先探后存, 或 `.env` 配 `GM_API_KEY`; 北交所不在 GM 交易所清单, 相关标的跳过并回退 TickFlow
+  - `bridge.py` — gm venv 内运行的单发桥接脚本 (stdin 请求文件 → stdout JSON 行; 批量循环 + 节流在桥接内摊销 spawn 开销)
+  - `client.py` — venv 管理 (uv 自动创建安装) + 子进程调用 + Key 探测
+  - `provider.py` — Provider 实现 (内部 `CODE.EX` ↔ GM `EX.CODE` 双向映射、单位/时区归一、软失败)
+  - `tests/test_gm_provider.py` — 16 个契约测试 (桥接行样例注入, 不依赖网络)
 
 ## 路由机制(无需关心, 仅参考)
 

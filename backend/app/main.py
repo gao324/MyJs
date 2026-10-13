@@ -496,6 +496,10 @@ _AUTH_WHITELIST_EXACT = (
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
+    # 开箱即用模式: 登录校验已关闭, 所有请求直接放行。
+    # 认证代码 (auth router / services/auth) 完整保留, 升级上游时零冲突;
+    # 如需恢复密码保护, 删除本行即回到原有三态门禁。
+    return await call_next(request)
     path = request.url.path
     # 仅 /api/ 走认证; 静态资源(前端页面/assets)放行, 由前端处理跳转
     if not path.startswith("/api/"):

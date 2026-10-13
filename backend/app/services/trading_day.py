@@ -64,16 +64,23 @@ def reset_cache() -> None:
         _CACHE.probed_at = 0.0
 
 
-def _probe_fuyao(now: datetime) -> bool | None:
-    """fuyao 交易日历: 今天在列表内 ⇔ 交易日。未配置 fuyao / 失败 → None。"""
+def _probe_plugin_calendar(now: datetime) -> bool | None:
+    """插件交易日历: 今天在列表内 ⇔ 交易日。gm 优先 (默认数据源), fuyao 备选。
+
+    均未配置/失败 → None。"""
     try:
         from app.data_providers import custom as custom_sources
 
-        if not custom_sources.is_custom_provider("fuyao"):
-            return None
-        provider = custom_sources.get_provider("fuyao")
-        days = provider.trading_days()
-        return now.date() in days if days else None
+        for name in ("gm", "fuyao"):
+            if not custom_sources.is_custom_provider(name):
+                continue
+            provider = custom_sources.get_provider(name)
+            if not hasattr(provider, "trading_days"):
+                continue
+            days = provider.trading_days()
+            if days:
+                return now.date() in days
+        return None
     except Exception:  # noqa: BLE001 — 探针失败按未知处理, 不上抛
         return None
 
@@ -105,7 +112,7 @@ def _probe_tickflow(now: datetime) -> bool | None:
 def is_trading_day(now: datetime | None = None) -> bool | None:
     """今天是否 A 股交易日。True=交易日, False=确定休市, None=未知 (维持周几近似)。
 
-    周末零成本直判; 工作日走探测链 (fuyao 日历 → tickflow 时间戳),
+    周末零成本直判; 工作日走探测链 (插件日历 → tickflow 时间戳),
     结论按 TTL 缓存。线程安全: 实时行情与分钟增量两个线程共用。
     """
     now = now or cn_now()
@@ -122,7 +129,7 @@ def is_trading_day(now: datetime | None = None) -> bool | None:
         ):
             return _CACHE.verdict
 
-    verdict = _probe_fuyao(now)
+    verdict = _probe_plugin_calendar(now)
     if verdict is None:
         verdict = _probe_tickflow(now)
 
