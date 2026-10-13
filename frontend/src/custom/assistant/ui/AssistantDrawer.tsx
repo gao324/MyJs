@@ -75,7 +75,13 @@ function saveWidth(width: number) {
 
 function clampWidth(width: number): number {
   // 右缘贴齐, 至少给页面主体留 64px 上下文。
-  const maxWidth = Math.max(MIN_WIDTH, window.innerWidth - 64)
+  // 窄视口 (放不下 MIN_WIDTH+64, 如折叠屏外屏) 退让为 92vw, 不再越出视口。
+  const viewportWidth = window.innerWidth
+  if (viewportWidth < MIN_WIDTH + 64) {
+    const fallbackMax = Math.max(280, Math.round(viewportWidth * 0.92))
+    return Math.min(Math.max(width, Math.min(MIN_WIDTH, fallbackMax)), fallbackMax)
+  }
+  const maxWidth = Math.max(MIN_WIDTH, viewportWidth - 64)
   return Math.min(Math.max(width, MIN_WIDTH), maxWidth)
 }
 
