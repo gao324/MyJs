@@ -192,7 +192,7 @@ export function Indices() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[15rem_1fr] gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[15rem_1fr]">
         <aside className="rounded-card border border-border bg-surface p-3">
           <div className="mb-2 px-1 text-[11px] uppercase tracking-wider text-muted">核心指数</div>
           <div className="space-y-1">
@@ -241,7 +241,7 @@ export function Indices() {
             </div>
           )}
           {chartRows.length > 0 && (
-            <div className="flex items-start gap-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:gap-3">
               <div className="min-w-0 flex-1">
                 <EChartsCandlestick
                   data={chartRows}
@@ -259,7 +259,7 @@ export function Indices() {
                   activeIndicators={['vol', 'macd']}
                 />
               </div>
-              <div className="min-w-0 flex-1 border-l border-border pl-3" style={{ height: 620 }}>
+              <div className="min-w-0 flex-1 border-t border-border pt-3 md:border-t-0 md:border-l md:pt-0 md:pl-3" style={{ height: 620 }}>
                 {!hasMinuteCap ? (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                     <Lock className="h-5 w-5 text-muted" />

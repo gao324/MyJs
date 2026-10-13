@@ -129,7 +129,7 @@ export function StockAnalysis() {
         </div>
 
         {/* 主体:左侧当前个股看板 + 右侧常驻历史报告 */}
-        <div className="grid grid-cols-[1fr_288px] gap-6 items-start">
+        <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-[1fr_288px]">
           <div className="min-w-0">
             {!symbol ? (
               <EmptyState

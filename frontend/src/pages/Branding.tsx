@@ -88,7 +88,7 @@ export function Branding() {
         subtitle="名字保持 Tick Stock Panel,4 种赛博朋克 + 高级感的视觉处理 — 字重、字距、配色、图标各不同。挑你最喜欢的告诉我。"
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {VARIANTS.map((v) => (
             <Sample key={v.id} v={v} />

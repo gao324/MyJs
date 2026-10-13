@@ -284,7 +284,7 @@ export function ExtDimensionAnalysis({
         }
       />
 
-      <div className="px-8 py-6 space-y-6 max-w-7xl">
+      <div className="px-4 sm:px-8 py-6 space-y-6 max-w-7xl">
         <section className={`relative overflow-hidden rounded-2xl border border-border bg-surface p-6 ${accentClass}`}>
           <div className="relative z-10 max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-secondary">

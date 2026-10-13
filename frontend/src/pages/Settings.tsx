@@ -71,16 +71,16 @@ export function Settings() {
         subtitle="管理账户、数据刷新策略和高级功能配置。"
       />
 
-      <div className="px-8 py-6">
-        <div className="flex gap-6 items-stretch">
+      <div className="px-4 py-6 sm:px-8">
+        <div className="flex max-md:flex-col max-md:gap-3 gap-6 items-stretch">
           {/* ===== 竖向 Tab 侧栏 ===== */}
-          <nav className={cn('shrink-0 transition-all duration-200 ease-smooth', collapsed ? 'w-10' : 'w-36')}>
-            <div className="flex flex-col gap-0.5 justify-center min-h-[60vh] sticky top-6">
+          <nav className={cn('shrink-0 transition-all duration-200 ease-smooth', 'max-md:w-full', collapsed ? 'w-10' : 'w-36')}>
+            <div className="tf-nav-scroll flex flex-col gap-0.5 justify-center min-h-[60vh] sticky top-6 max-md:min-h-0 max-md:static max-md:flex-row max-md:items-center max-md:gap-1 max-md:overflow-x-auto max-md:pb-2">
               {/* 收起/展开 按钮 */}
               <button
                 onClick={toggleCollapsed}
                 className={cn(
-                  'flex items-center gap-2 rounded-btn text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth mb-1',
+                  'flex items-center gap-2 rounded-btn text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth mb-1 max-md:hidden',
                   collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2 text-xs',
                 )}
                 title={collapsed ? '展开菜单' : '收起菜单'}
@@ -99,7 +99,7 @@ export function Settings() {
                   onClick={() => setSearchParams({ tab: key }, { replace: true })}
                   title={collapsed ? label : undefined}
                   className={cn(
-                    'relative flex items-center rounded-btn text-sm transition-colors duration-150 ease-smooth',
+                    'relative flex items-center rounded-btn text-sm transition-colors duration-150 ease-smooth shrink-0 whitespace-nowrap',
                     collapsed ? 'justify-center px-0 py-2' : 'items-center gap-2 px-3 py-2 text-left',
                     activeTab.key === key
                       ? 'bg-accent/10 text-accent font-medium'

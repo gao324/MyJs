@@ -104,7 +104,7 @@ function SortableItem({ entry, hidden, onToggleHidden, badgeEnabled, onToggleBad
     <div
       ref={setNodeRef}
       style={style}
-      className={`group grid grid-cols-[2.5rem_1fr_4.5rem_3rem_3rem_3rem] items-center border-b border-border/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-elevated/40 ${
+      className={`group grid min-w-[640px] grid-cols-[2.5rem_1fr_4.5rem_3rem_3rem_3rem] items-center border-b border-border/60 px-4 py-2.5 transition-colors last:border-b-0 hover:bg-elevated/40 ${
         isDragging ? 'bg-elevated rounded-lg shadow-lg' : ''
       } ${hidden ? 'opacity-50' : ''}`}
     >
@@ -360,7 +360,8 @@ export function SettingsMenuSettingsPanel() {
       </section>
 
       <section className="rounded-card border border-border bg-surface overflow-hidden">
-        <div className="grid grid-cols-[2.5rem_1fr_4.5rem_3rem_3rem_3rem] items-center border-b border-border bg-elevated/40 px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.06em] text-muted">
+        <div className="max-md:overflow-x-auto">
+        <div className="grid min-w-[640px] grid-cols-[2.5rem_1fr_4.5rem_3rem_3rem_3rem] items-center border-b border-border bg-elevated/40 px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.06em] text-muted">
           <div />
           <div>菜单 · 归属</div>
           <div>类型</div>
@@ -390,6 +391,7 @@ export function SettingsMenuSettingsPanel() {
             ))}
           </SortableContext>
         </DndContext>
+        </div>
 
         {menus.isLoading && (
           <div className="px-5 py-10 text-center text-sm text-muted">正在加载菜单...</div>

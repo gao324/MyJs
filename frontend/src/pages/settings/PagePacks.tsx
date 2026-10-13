@@ -131,7 +131,8 @@ export function SettingsPagePacksPanel() {
       )}
 
       <section className="rounded-card border border-border bg-surface overflow-hidden">
-        <div className="grid grid-cols-[1fr_8rem_6rem_5rem_4rem] items-center border-b border-border px-4 py-2 text-[11px] text-muted">
+        <div className="max-md:overflow-x-auto">
+        <div className="grid min-w-[640px] grid-cols-[1fr_8rem_6rem_5rem_4rem] items-center border-b border-border px-4 py-2 text-[11px] text-muted">
           <div>页面 / ID</div><div>路径</div><div>大小 / 时间</div><div className="text-center">启用</div><div className="text-center">操作</div>
         </div>
         {packs.length === 0 && (
@@ -139,7 +140,7 @@ export function SettingsPagePacksPanel() {
         )}
         {packs.map(p => (
           <div key={p.id} className={cn(
-            'grid grid-cols-[1fr_8rem_6rem_5rem_4rem] items-center border-b border-border/60 px-4 py-3 last:border-b-0',
+            'grid min-w-[640px] grid-cols-[1fr_8rem_6rem_5rem_4rem] items-center border-b border-border/60 px-4 py-3 last:border-b-0',
             p.enabled ? '' : 'opacity-70',
           )}>
             <div className="min-w-0">
@@ -185,6 +186,7 @@ export function SettingsPagePacksPanel() {
             </div>
           </div>
         ))}
+        </div>
       </section>
     </div>
   )

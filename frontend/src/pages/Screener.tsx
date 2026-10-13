@@ -938,7 +938,7 @@ export function Screener() {
         }
       />
 
-      <div className="px-8 py-4 space-y-3">
+      <div className="px-4 sm:px-8 py-4 space-y-3">
         {/* 策略卡片 */}
         {cardSize !== 'hidden' && (
         <section>
