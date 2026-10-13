@@ -393,13 +393,15 @@ export function AnalysisKChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, levels, series, seriesDates, activeTypes, pivotRank, markers, ranges, height, theme, hoveredKey])
 
-  // resize
+  // resize — 观察容器尺寸 (折叠开合/侧栏收展都触发), 不依赖 window resize 事件
   useEffect(() => {
-    const inst = chartInstRef.current
-    if (!inst) return
-    const onResize = () => inst.resize()
-    window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('resize', onResize); inst.dispose(); chartInstRef.current = null }
+    const resizeObserver = new ResizeObserver(() => chartInstRef.current?.resize())
+    if (chartRef.current) resizeObserver.observe(chartRef.current)
+    return () => {
+      resizeObserver.disconnect()
+      chartInstRef.current?.dispose()
+      chartInstRef.current = null
+    }
   }, [])
 
   const toggleType = (t: LevelType) => {

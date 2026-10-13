@@ -92,11 +92,18 @@ function useEChart(
 ) {
   const ref = useRef<HTMLDivElement>(null)
   const instRef = useRef<echarts.ECharts | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const observedNodeRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    const onResize = () => instRef.current?.resize()
-    window.addEventListener('resize', onResize)
+    resizeObserverRef.current = new ResizeObserver(() => instRef.current?.resize())
+    if (ref.current) {
+      observedNodeRef.current = ref.current
+      resizeObserverRef.current.observe(ref.current)
+    }
     return () => {
-      window.removeEventListener('resize', onResize)
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
+      observedNodeRef.current = null
       instRef.current?.dispose()
       instRef.current = null
     }
@@ -109,6 +116,10 @@ function useEChart(
     if (!instRef.current) {
       instRef.current = echarts.init(ref.current, undefined, { renderer: 'canvas' })
       onReady?.(instRef.current)
+    }
+    if (ref.current !== observedNodeRef.current && resizeObserverRef.current) {
+      observedNodeRef.current = ref.current
+      resizeObserverRef.current.observe(ref.current)
     }
     if (option) {
       instRef.current.setOption(option, { notMerge: true })

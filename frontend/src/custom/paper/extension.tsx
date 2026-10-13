@@ -62,8 +62,8 @@ function NavChart({ nav }: { nav: Array<{ date: string; nav: number; benchmark_c
   useEffect(() => {
     if (!elRef.current) return
     chartRef.current = echarts.init(elRef.current, undefined, { renderer: 'canvas' })
-    const onResize = () => chartRef.current?.resize()
-    window.addEventListener('resize', onResize)
+    const resizeObserver = new ResizeObserver(() => chartRef.current?.resize())
+    resizeObserver.observe(elRef.current)
     // 跟随亮暗主题切换重设坐标轴配色
     const observer = new MutationObserver(() => {
       const darkNow = document.documentElement.classList.contains('dark')
@@ -76,7 +76,7 @@ function NavChart({ nav }: { nav: Array<{ date: string; nav: number; benchmark_c
     })
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
     return () => {
-      window.removeEventListener('resize', onResize)
+      resizeObserver.disconnect()
       observer.disconnect()
       chartRef.current?.dispose()
       chartRef.current = null
@@ -694,8 +694,8 @@ function CompareChart({ rows }: { rows: PaperCompareRow[] }) {
   useEffect(() => {
     if (!elRef.current) return
     chartRef.current = echarts.init(elRef.current, undefined, { renderer: 'canvas' })
-    const onResize = () => chartRef.current?.resize()
-    window.addEventListener('resize', onResize)
+    const resizeObserver = new ResizeObserver(() => chartRef.current?.resize())
+    resizeObserver.observe(elRef.current)
     const observer = new MutationObserver(() => {
       const darkNow = document.documentElement.classList.contains('dark')
       const axisColor = darkNow ? '#8E8E96' : '#52525B'
@@ -707,7 +707,7 @@ function CompareChart({ rows }: { rows: PaperCompareRow[] }) {
     })
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
     return () => {
-      window.removeEventListener('resize', onResize)
+      resizeObserver.disconnect()
       observer.disconnect()
       chartRef.current?.dispose()
       chartRef.current = null

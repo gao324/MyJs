@@ -100,13 +100,15 @@ function useEChart(
 ) {
   const ref = useRef<HTMLDivElement>(null)
   const instRef = useRef<echarts.ECharts | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const eventsRef = useRef(events)
   eventsRef.current = events
   useEffect(() => {
-    const onResize = () => instRef.current?.resize()
-    window.addEventListener('resize', onResize)
+    resizeObserverRef.current = new ResizeObserver(() => instRef.current?.resize())
+    if (ref.current) resizeObserverRef.current.observe(ref.current)
     return () => {
-      window.removeEventListener('resize', onResize)
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
       instRef.current?.dispose()
       instRef.current = null
     }
@@ -133,6 +135,7 @@ function useEChart(
     const leftover = echarts.getInstanceByDom(ref.current)
     if (leftover && leftover !== instRef.current) leftover.dispose()
     if (!instRef.current) instRef.current = echarts.init(ref.current, undefined, { renderer: 'canvas' })
+    resizeObserverRef.current?.observe(ref.current)
     const inst = instRef.current
     // 事件回调经 ref 取最新闭包, 绑定只需覆盖实例生命周期
     inst.off('mouseover'); inst.off('mouseout'); inst.off('globalout')
