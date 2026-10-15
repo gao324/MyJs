@@ -163,3 +163,23 @@ class AkshareExtProvider:
             blocks["share_hold_change"] = _safe(lambda: _records(
                 ak.stock_share_hold_change_sse(symbol=code)), "share_hold_change")
         return blocks
+
+    def get_fund_flow(self, symbol: str) -> dict[str, list[dict]]:
+        """资金流/融资融券/龙虎榜三块(龙虎榜按代码过滤, 近 30 自然日窗口)。"""
+        import datetime as dt
+
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        blocks: dict[str, list[dict]] = {"fund_flow": [], "margin": [], "lhb": []}
+        blocks["fund_flow"] = _safe(lambda: _records(
+            ak.stock_individual_fund_flow(stock=code, market=market)), "fund_flow")
+        day = dt.date.today()
+        prev = (day - dt.timedelta(days=1)).strftime("%Y%m%d")
+        margin_fn = ak.stock_margin_detail_szse if market == "sz" else ak.stock_margin_detail_sse
+        blocks["margin"] = _safe(lambda: _records(margin_fn(date=prev)), "margin")
+        start = (day - dt.timedelta(days=30)).strftime("%Y%m%d")
+        end = day.strftime("%Y%m%d")
+        rows = _safe(lambda: _records(
+            ak.stock_lhb_detail_em(start_date=start, end_date=end)), "lhb")
+        blocks["lhb"] = [r for r in rows if str(r.get("代码") or "").strip() == code]
+        return blocks
