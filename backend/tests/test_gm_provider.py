@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from app.market_time import CN_TZ
 from app.plugins.gm import provider as gp
 from app.plugins.gm.provider import GmProvider
 
@@ -95,6 +96,26 @@ def test_minute_frame_wallclock_and_filter():
     assert row["datetime"] == datetime(2026, 10, 9, 9, 30, 0)  # 北京墙钟 naive
     assert row["datetime"].tzinfo is None
     assert row["volume"] == 17747.0
+
+
+def test_minute_frame_accepts_beijing_aware_window():
+    """窗口带北京时区时不得因 naive/aware 混比报错。
+
+    调用方 kline_sync.sync_and_persist_minute 的窗口两端是 CN_TZ aware
+    (见 tests/test_kline_sync_timezone.py), 帧内 datetime 却是北京墙钟 naive;
+    过滤器需先把窗口归一到同一口径, 否则整个分钟同步异常回退 TickFlow。
+    """
+    rows = [
+        _bar(eob="2026-10-09T01:30:00.000Z"),  # 北京 09:30, 窗口内
+        _bar(eob="2026-10-09T07:30:00.000Z"),  # 北京 15:30, 窗口外
+    ]
+    df = GmProvider._minute_frame(
+        rows,
+        datetime(2026, 10, 9, 9, 0, tzinfo=CN_TZ),
+        datetime(2026, 10, 9, 15, 0, tzinfo=CN_TZ),
+    )
+    assert df.height == 1
+    assert df.row(0, named=True)["datetime"] == datetime(2026, 10, 9, 9, 30)
 
 
 # ---- 实时快照 ----

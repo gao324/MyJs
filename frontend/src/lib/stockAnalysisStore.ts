@@ -153,7 +153,11 @@ export async function findLatestHistoryReport(symbol: string): Promise<HistoryRe
  */
 export async function findTodayReport(symbol: string): Promise<HistoryReport | null> {
   if (!historyLoaded) await loadHistory()
-  const today = new Date().toISOString().slice(0, 10)  // YYYY-MM-DD
+  // created_at 是后端北京墙钟(naive),按北京日期比对;
+  // 不用 toISOString(UTC),否则 UTC 16-24 点窗口会错开一天。
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
   return history.find(r => r.symbol === symbol && (r.created_at ?? '').slice(0, 10) === today) ?? null
 }
 

@@ -21,6 +21,11 @@ interface Props {
   symbol: string
   height?: number
   showIntraday?: boolean
+  /**
+   * 分时面板初始是否展开 (默认 true)。
+   * false = 打开时只显示日K, 单击某根 K 线后再展开该日分时 (个股详情弹窗用)。
+   */
+  intradayInitiallyOpen?: boolean
   className?: string
   /** 当用户点击蜡烛选中日期时回调（用于外部自动开启分时图）。 */
   onSelectDate?: (date: string) => void
@@ -61,6 +66,7 @@ export function StockPanel({
   symbol,
   height = 520,
   showIntraday = true,
+  intradayInitiallyOpen = true,
   className,
   onSelectDate,
   dateRange: externalDateRange,
@@ -85,7 +91,8 @@ export function StockPanel({
 }: Props) {
   const [linkedPrice, setLinkedPrice] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [intradayDismissed, setIntradayDismissed] = useState(false)
+  // 弹窗场景默认收起分时 (intradayInitiallyOpen=false): 打开只看日K, 点 K 线再展开
+  const [intradayDismissed, setIntradayDismissed] = useState(!intradayInitiallyOpen)
   // 信息条指标配置提升到此层：同时供 StockInfoBar 渲染与 StockDailyKChart 请求 ext 数据
   const [fields, setFields] = useState<ColumnConfig[]>(loadInfoFields)
   const extColumns = useMemo(() => buildInfoExtColumnsParam(fields), [fields])

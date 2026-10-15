@@ -15,6 +15,7 @@ import { StockMultiDayIntradayChart } from '@/components/StockMultiDayIntradayCh
 import { DatePicker } from '@/components/DatePicker'
 import { RuleEditor } from '@/components/monitor/RuleEditor'
 import { PriceAlertDialog } from '@/components/stock-analysis/PriceAlertDialog'
+import { AiAnalyzeButton } from '@/components/stock-analysis/AiAnalyzeButton'
 import { buildMonitorPriceLines } from '@/lib/price-alerts'
 import { usePreferences } from '@/lib/useSharedQueries'
 import { setFocusSymbol, clearFocusSymbol } from '@/lib/useQuoteStream'
@@ -406,6 +407,8 @@ export function StockPreviewDialogContent({ symbol, name, onClose, triggerInfo, 
                     <Star className="h-4 w-4" />
                   </WatchlistAddMenu>
                 )}
+                {/* 一键 AI 分析: 复用个股分析链路, 结果由全局 StockAnalysisHost 弹出 */}
+                <AiAnalyzeButton symbol={symbol} name={name} />
                 {/* 加监控 */}
                 <button
                   onClick={() => setShowMonitorEditor(true)}
@@ -537,6 +540,7 @@ export function StockPreviewDialogContent({ symbol, name, onClose, triggerInfo, 
                   symbol={symbol}
                   height={420}
                   showIntraday
+                  intradayInitiallyOpen={false}
                   dateRange={dateRange}
                   priceLines={monitorPriceLines}
                   onPriceDoubleClick={openPriceAlert}

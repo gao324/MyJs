@@ -7,6 +7,7 @@ import {
   EChartsCandlestick,
   OVERLAY_INDICATORS,
   SUB_CHARTS,
+  orderedSubChartDefs,
   type ChartMarker,
   type ChartPriceLine,
   type ChartRange,
@@ -180,9 +181,8 @@ export function StockDailyKChart({
     })
   }, [])
 
-  const activeSubDefs = activeIndicators
-    .map(key => SUB_CHARTS.find(s => s.key === key))
-    .filter((d): d is typeof SUB_CHARTS[number] => !!d)
+  // 与图表内部共用同一顺序权威 (renderOrder), 受控高度才不会与副图实际排布错位
+  const activeSubDefs = orderedSubChartDefs(activeIndicators)
   let subExtraH = 0
   activeSubDefs.forEach(def => { subExtraH += SUB_INFO_H + def.height })
   if (activeSubDefs.length > 0) subExtraH += activeSubDefs.length * SUB_GAP + 14

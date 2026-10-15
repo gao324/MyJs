@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { chartTheme, getTheme, useTheme } from '@/lib/theme'
 import { fmtPct } from '@/lib/format'
+import { juediSubInfo, juediSubSeries } from '@/lib/tdx/juediChart'
 import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
 
@@ -79,10 +80,15 @@ export interface SubChartDef {
   height: number
   /** 构建 series 数组 */
   buildSeries: (data: OHLC[], context: SubChartContext) => any[]
-  /** 构建信息栏文字 (当前数据行 -> 显示内容) */
-  buildInfo: (d: OHLC | null) => { label: string; color: string; value: string }[]
+  /** 构建信息栏文字 (当前数据行 -> 显示内容); data/index 供需整段序列才能取值的公式指标使用 */
+  buildInfo: (d: OHLC | null, data: OHLC[], index: number) => { label: string; color: string; value: string }[]
   /** Y 轴特殊配置 */
   yAxisConfig?: Record<string, any>
+  /**
+   * 副图纵向顺序: 数值越小越靠上 (默认 0), 不影响胶囊行顺序。
+   * 公式类附图需要紧贴主图时给负值 (成交量等常规副图保持默认, 落到其下方)。
+   */
+  renderOrder?: number
 }
 
 // ===== 成交量 N 日均量 =====
@@ -309,10 +315,34 @@ export const SUB_CHARTS: SubChartDef[] = [
       ]
     },
   },
+  {
+    // 通达信副图公式「郑云绝底」: 计算与 series 映射见 src/lib/tdx/ (设计文档 §3 / §4.4)。
+    // 依赖剪枝后不依赖流通股本, 也不需要长历史预热; 数据不足时头部输出为空、信号不触发。
+    key: 'juedi',
+    label: '绝底',
+    height: 100,
+    // 通达信里附图紧贴主图: 负 renderOrder 让「绝底」排在成交量等常规副图之前
+    renderOrder: -1,
+    buildSeries: (data) => juediSubSeries(data),
+    buildInfo: (_d, data, index) => juediSubInfo(data, index),
+  },
 ]
 
 /** 向后兼容的 INDICATORS 导出 (不含 vol) */
 export const INDICATORS = SUB_CHARTS.filter(s => s.key !== 'vol')
+
+/**
+ * 副图纵向顺序的唯一权威: 按 renderOrder 升序, 同值时保持激活顺序 (稳定)。
+ * 布局(grid 装配)与信息栏 graphic 必须共用本函数, 否则标签会贴到错误的副图上。
+ */
+export function orderedSubChartDefs(activeIndicators: string[]): SubChartDef[] {
+  return activeIndicators
+    .map(key => SUB_CHARTS.find(s => s.key === key))
+    .filter((def): def is SubChartDef => !!def)
+    .map((def, index) => ({ def, index }))
+    .sort((a, b) => (a.def.renderOrder ?? 0) - (b.def.renderOrder ?? 0) || a.index - b.index)
+    .map(entry => entry.def)
+}
 
 /** 主图叠加指标 (画在 K 线上方, 不占副图空间) */
 export const OVERLAY_INDICATORS: { key: string; label: string }[] = [
@@ -382,11 +412,9 @@ function buildSubInfoGraphics(
   const graphics: any[] = []
   let curTop = subStartTop
 
-  activeIndicators.forEach((key) => {
-    const def = SUB_CHARTS.find(s => s.key === key)
-    if (!def) return
-
-    const items = def.buildInfo(d)
+  // 与 grid 装配共用同一顺序权威, 保证标签/数值贴着各自的副图
+  orderedSubChartDefs(activeIndicators).forEach((def) => {
+    const items = def.buildInfo(d, data, infoIdx)
     if (def.key === 'vol' && d) {
       const calcVolMa = (n: number) => {
         if (infoIdx < n - 1) return null
@@ -410,14 +438,14 @@ function buildSubInfoGraphics(
 
     // 每个元素加固定 id，确保 ECharts 增量更新时能正确匹配
     graphics.push({
-      id: `sub-sep-${key}`,
+      id: `sub-sep-${def.key}`,
       type: 'line',
       shape: { x1: 0, y1: curTop, x2: 2000, y2: curTop },
       style: { stroke: 'rgba(255,255,255,0.08)', lineWidth: 1 },
       silent: true, z: 0,
     })
     graphics.push({
-      id: `sub-label-${key}`,
+      id: `sub-label-${def.key}`,
       type: 'text',
       style: {
         text: def.label,
@@ -441,7 +469,7 @@ function buildSubInfoGraphics(
       }
     })
     graphics.push({
-      id: `sub-val-${key}`,
+      id: `sub-val-${def.key}`,
       type: 'text',
       right: 24,
       style: {
@@ -542,13 +570,8 @@ function buildOption(
   const candleBottomPad = 22
 
   let subTotalH = 0
-  const activeSubDefs: SubChartDef[] = []
-  activeIndicators.forEach(key => {
-    const def = SUB_CHARTS.find(s => s.key === key)
-    if (!def) return
-    activeSubDefs.push(def)
-    subTotalH += INFO_BAR_H + def.height
-  })
+  const activeSubDefs: SubChartDef[] = orderedSubChartDefs(activeIndicators)
+  activeSubDefs.forEach(def => { subTotalH += INFO_BAR_H + def.height })
   if (activeSubDefs.length > 0) subTotalH += activeSubDefs.length * SUB_GAP_PX
 
   const candleAvail = Math.max(containerHeight - topPad - candleBottomPad - subTotalH, 100)
@@ -1124,6 +1147,23 @@ export function EChartsCandlestick({
       }
     })
 
+    // 单击选中日期: 只依赖上面那个系列点击会要求命中蜡烛实体矩形/影线 ——
+    // 小实体、十字星与实体上下的空白列都点不中, 表现为「单击 K 线选不中日期」。
+    // 这里按像素→类目映射覆盖整个主图 grid, 与双击设预警 (handlePriceDoubleClick) 同口径;
+    // 越界像素收敛到首/末根, 不产生空选中。
+    const handleSelectDate = (event: { offsetX: number; offsetY: number }) => {
+      const pixel: [number, number] = [event.offsetX, event.offsetY]
+      if (!chart.containPixel({ gridIndex: 0 }, pixel)) return
+      const d = dataRef.current
+      if (d.length === 0) return
+      const coordinate = chart.convertFromPixel({ xAxisIndex: 0 }, pixel)
+      const raw = Array.isArray(coordinate) ? Number(coordinate[0]) : NaN
+      if (!Number.isFinite(raw)) return
+      const idx = Math.min(d.length - 1, Math.max(0, Math.round(raw)))
+      onDateClickRef.current?.(d[idx].date)
+    }
+    chart.getZr().on('click', handleSelectDate)
+
     const handlePriceDoubleClick = (event: { offsetX: number; offsetY: number }) => {
       const pixel: [number, number] = [event.offsetX, event.offsetY]
       if (!chart.containPixel({ gridIndex: 0 }, pixel)) return
@@ -1163,6 +1203,7 @@ export function EChartsCandlestick({
       chart.off('dataZoom')
       hoverEl.removeEventListener('mouseenter', handlePointerEnter)
       hoverEl.removeEventListener('mouseleave', handlePointerLeave)
+      chart.getZr().off('click', handleSelectDate)
       chart.getZr().off('dblclick', handlePriceDoubleClick)
       ro.disconnect()
       chart.dispose()

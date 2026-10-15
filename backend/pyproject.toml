@@ -42,6 +42,16 @@ dependencies = [
     # Watchlist screenshot OCR (Tesseract)
     "pytesseract>=0.3.10",
     "Pillow>=10.0",
+    # DSA 问股 agent (vendor 引用方式接入, 见 app/services/dsa_bridge.py)。
+    # 只装 agent 运行必需项; 数据源类依赖 (akshare/efinance/yfinance/pytdx/baostock/tushare)
+    # 未列入, 对应 DSA 工具按缺库降级。版本约束与参考实现 (stock checkout) 对齐。
+    "litellm>=1.80.10,!=1.82.7,!=1.82.8,<1.99.0",
+    "sqlalchemy>=2.0",
+    "tenacity>=8.2.0",
+    "json-repair>=0.55.1",
+    "fake-useragent>=1.4.0",
+    "newspaper3k>=0.2.8",
+    "lxml_html_clean",
 ]
 
 [project.optional-dependencies]

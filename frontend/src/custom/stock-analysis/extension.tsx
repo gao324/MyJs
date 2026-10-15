@@ -20,16 +20,24 @@ import type { FrontendExtension } from '@/extensions/types'
 import { IconStockFocus } from '@/components/BrandIcons'
 
 /**
- * 个股分析页 —— 日 K + 关键价位(压力/支撑/密集区/枢轴/前高前低)+ AI 四维分析。
+ * 个股分析页 —— 日 K + 关键价位(压力/支撑/密集区/枢轴/前高前低)+ DSA 问股 agent 分析。
  *
  * 与财务分析页的区别:
  *  - 以【行情 + 关键价位】为视觉主体(专用日 K 图表,不复用个股对话框图表)
  *  - AI 分析输出客观技术状态与风险提示(非买卖建议、非财务质量评级)
  *  - 报告胶囊用蓝色系,与财务分析(紫色)并存
  */
+type Tab = 'analysis' | 'history'
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'analysis', label: '关键分析' },
+  { key: 'history', label: '历史报告' },
+]
+
 export function StockAnalysis() {
   const [symbol, setSymbol] = useState<string>('')
   const [name, setName] = useState<string>('')
+  const [tab, setTab] = useState<Tab>('analysis')
   const [checking, setChecking] = useState(false)
   const [confirmReport, setConfirmReport] = useState<{ id: string; created_at: string; focus: string } | null>(null)
   const [previewSymbol, setPreviewSymbol] = useState<string | null>(null)
@@ -83,7 +91,7 @@ export function StockAnalysis() {
     <>
       <PageHeader
         title="个股分析"
-        subtitle="日 K · 关键价位 · AI 四维分析(技术 / 基本面 / 财务 / 消息面)"
+        subtitle="日 K · 关键价位 · DSA 问股 agent 分析"
         right={
           <div className="flex items-center gap-2">
             <LastStockChip stock={lastStock} onSelect={onSelect} />
@@ -128,21 +136,46 @@ export function StockAnalysis() {
           )}
         </div>
 
-        {/* 主体:左侧当前个股看板 + 右侧常驻历史报告 */}
-        <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-[1fr_288px]">
+        {/* 顶部 Tab:关键分析 / 历史报告 */}
+        <div className="flex items-center gap-1 border-b border-border/60 overflow-x-auto">
+          {TABS.map(t => {
+            const isActive = tab === t.key
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                  isActive
+                    ? 'border-accent text-accent'
+                    : 'border-transparent text-muted hover:text-secondary'
+                }`}
+              >
+                {t.key === 'analysis'
+                  ? <LineChart className="h-3.5 w-3.5" />
+                  : <HistoryIcon className="h-3.5 w-3.5" />}
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* 关键分析:当前个股看板 */}
+        {tab === 'analysis' && (
           <div className="min-w-0">
             {!symbol ? (
               <EmptyState
                 icon={LineChart}
                 title="选择一只股票开始分析"
-                hint="搜索代码或名称,查看日 K 与关键价位,并可让 AI 进行技术面 / 基本面 / 财务面 / 消息面四维综合分析。"
+                hint="搜索代码或名称,查看日 K 与关键价位,并可让 DSA 问股 agent 结合行情与资讯做综合分析。"
               />
             ) : (
               <StockAnalysisBoard symbol={symbol} />
             )}
           </div>
-          <HistorySidebar />
-        </div>
+        )}
+
+        {/* 历史报告:所有股票,按时间倒序平铺 */}
+        {tab === 'history' && <HistoryReports />}
       </div>
 
       {/* 二次确认:已有历史报告 */}
@@ -250,69 +283,95 @@ function StockAnalysisBoard({ symbol }: { symbol: string }) {
   )
 }
 
-// ===== 左侧常驻:历史报告侧栏(所有股票,按时间倒序平铺) =====
-function HistorySidebar() {
+// ===== 历史报告页(所有股票,默认只看当天,可切全部) =====
+function HistoryReports() {
   const { reports, loaded } = useHistoryReports()
+  const [onlyToday, setOnlyToday] = useState(true)
+
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+  const visible = onlyToday ? reports.filter(r => (r.created_at ?? '').slice(0, 10) === today) : reports
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+      </div>
+    )
+  }
+
+  if (reports.length === 0) {
+    return (
+      <EmptyState
+        icon={HistoryIcon}
+        title="还没有任何个股分析报告"
+        hint="选一只股票,点「AI 个股分析」生成"
+      />
+    )
+  }
 
   return (
-    <aside className="self-start sticky top-0">
-      <div className="rounded-card border border-border/60 bg-surface/40 overflow-hidden">
-        <div className="px-3 py-2.5 border-b border-border/40 flex items-center gap-2">
-          <HistoryIcon className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-          <span className="text-xs font-medium text-foreground">历史报告</span>
-          {loaded && reports.length > 0 && (
-            <span className="ml-auto text-[10px] text-muted">{reports.length}</span>
-          )}
-        </div>
-
-        {!loaded ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-4 w-4 animate-spin text-muted" />
-          </div>
-        ) : reports.length === 0 ? (
-          <div className="px-3 py-10 text-center">
-            <p className="text-xs text-muted">还没有任何个股分析报告</p>
-            <p className="text-[10px] text-muted/60 mt-1">选一只股票,点「AI 个股分析」生成</p>
-          </div>
-        ) : (
-          <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-2 space-y-1.5">
-            {reports.map(r => (
-              <div
-                key={r.id}
-                className="group rounded-lg border border-border/40 bg-elevated/20 p-2.5 hover:border-border hover:bg-elevated/40 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => openHistoryReport(r.id)}
-                    className="flex-1 text-left min-w-0"
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-xs font-medium text-foreground truncate">{r.name || r.symbol}</span>
-                      <span className="text-[10px] font-mono text-muted shrink-0">{r.symbol}</span>
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted">
-                      <span>{fmtRelative(r.created_at)}</span>
-                      {r.close != null && <span className="font-mono">价 {r.close.toFixed(2)}</span>}
-                      {r.focus && <span className="text-sky-300/70 truncate">关注: {r.focus}</span>}
-                    </div>
-                    {r.summary && (
-                      <div className="mt-1 text-[11px] text-muted truncate">{r.summary}</div>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => { deleteReport(r.id); toast('已删除', 'success') }}
-                    className="shrink-0 text-[10px] text-muted/60 hover:text-danger transition-colors px-1 py-0.5 opacity-0 group-hover:opacity-100"
-                    title="删除"
-                  >
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+    <div className="rounded-card border border-border/60 bg-surface/40 overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
+        <HistoryIcon className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+        <span className="text-xs font-medium text-foreground">历史报告</span>
+        <span className="ml-auto text-[10px] text-muted">{visible.length}{onlyToday ? ` / ${reports.length}` : ''}</span>
+        <button
+          onClick={() => setOnlyToday(v => !v)}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+            onlyToday
+              ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
+              : 'border-border/60 text-muted hover:text-secondary'
+          }`}
+          title={onlyToday ? '当前只看当天,点击查看全部' : '当前查看全部,点击只看当天'}
+        >
+          {onlyToday ? '只看当天' : '看全部'}
+        </button>
       </div>
-    </aside>
+      {visible.length === 0 ? (
+        <div className="px-4 py-10 text-center">
+          <p className="text-xs text-muted">当天还没有个股分析报告</p>
+          <p className="text-[10px] text-muted/60 mt-1">选一只股票,点「AI 个股分析」生成,或切换「看全部」</p>
+        </div>
+      ) : (
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 p-3">
+        {visible.map(r => (
+          <div
+            key={r.id}
+            className="group rounded-lg border border-border/40 bg-elevated/20 p-2.5 hover:border-border hover:bg-elevated/40 transition-colors"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => openHistoryReport(r.id)}
+                className="flex-1 text-left min-w-0"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-medium text-foreground truncate">{r.name || r.symbol}</span>
+                  <span className="text-[10px] font-mono text-muted shrink-0">{r.symbol}</span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted">
+                  <span>{fmtRelative(r.created_at)}</span>
+                  {r.close != null && <span className="font-mono">价 {r.close.toFixed(2)}</span>}
+                  {r.focus && <span className="text-sky-300/70 truncate">关注: {r.focus}</span>}
+                </div>
+                {r.summary && (
+                  <div className="mt-1 text-[11px] text-muted truncate">{r.summary}</div>
+                )}
+              </button>
+              <button
+                onClick={() => { deleteReport(r.id); toast('已删除', 'success') }}
+                className="shrink-0 text-[10px] text-muted/60 hover:text-danger transition-colors px-1 py-0.5 opacity-0 group-hover:opacity-100"
+                title="删除"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      )}
+    </div>
   )
 }
 

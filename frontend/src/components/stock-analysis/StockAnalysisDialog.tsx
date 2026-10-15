@@ -165,8 +165,8 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
                   </div>
                   <Loader2 className="absolute -inset-1 h-12 w-12 text-sky-400/40 animate-spin" style={{ animationDuration: '3s' }} />
                 </div>
-                <div className="text-xs text-secondary">AI 正在分析行情与关键价位…</div>
-                <div className="text-[10px] text-muted">读取日 K / 技术指标 / 压力支撑 / 财务,生成四维分析</div>
+                <div className="text-xs text-secondary">DSA 问股 agent 正在分析…</div>
+                <div className="text-[10px] text-muted">agent 自主调用行情 / 资讯工具,通常 1–3 分钟,请保持页面打开</div>
               </div>
             )}
 
@@ -242,7 +242,7 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
             <p className="mt-1.5 text-[10px] text-muted/50 leading-relaxed">
               {isHistory
                 ? '历史报告为静态记录;修改关注重点后将作为新任务重新生成。报告仅供参考,不构成投资建议。'
-                : '报告由项目已配置的 AI 模型基于本地行情与财务数据生成;消息面维度暂依据价量异动推断。报告仅供参考,不构成投资建议。'}
+                : '报告由本机 DSA 问股 agent 结合行情、资讯与项目内数据生成。报告仅供参考,不构成投资建议。'}
             </p>
           </div>
         </motion.div>

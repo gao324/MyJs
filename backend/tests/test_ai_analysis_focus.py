@@ -10,7 +10,7 @@ from app.services.financial_analyzer import (
 from app.services.market_recap import (
     _build_user_prompt as build_recap_user_prompt,
 )
-from app.services.stock_analyzer import (
+from app.services.stock_analyzer_legacy import (
     _build_user_prompt as build_stock_user_prompt,
 )
 

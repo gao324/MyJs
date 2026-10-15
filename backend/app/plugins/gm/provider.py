@@ -201,6 +201,17 @@ def _beijing_naive(iso: str | None) -> datetime | None:
     return dt
 
 
+def _beijing_wallclock(dt: datetime | None) -> datetime | None:
+    """取数窗口归一为北京墙钟 naive (与帧内 datetime 同口径); naive 值原样返回。
+
+    调用方窗口两端带北京时区 (kline_sync.sync_and_persist_minute 的 CN_TZ 窗口),
+    与帧内 naive datetime 直接比较会抛 TypeError。
+    """
+    if dt is None or dt.tzinfo is None:
+        return dt
+    return dt.astimezone(_BEIJING).replace(tzinfo=None)
+
+
 def _created_ms(iso: str | None, fallback_ms: int) -> int:
     dt = _beijing_naive(iso)
     if dt is None:
@@ -605,6 +616,10 @@ class GmProvider:
 
     @staticmethod
     def _minute_frame(rows: list[dict], start_dt: datetime | None, end_dt: datetime) -> pl.DataFrame:
+        # 窗口可能带北京时区 (kline_sync 的增量/向前扩展窗口), 帧内 datetime 是
+        # 北京墙钟 naive: 先归一到同一口径再比较, 否则 naive/aware 混比直接抛错。
+        start_dt = _beijing_wallclock(start_dt)
+        end_dt = _beijing_wallclock(end_dt)
         out = []
         for r in rows:
             symbol = _to_internal(r.get("_gm_symbol") or r.get("symbol"))

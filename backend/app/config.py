@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     ai_context_window: int = 128000
     # AI 助手工具轮次检查点: 连续 N 轮工具调用未完成时弹「继续/停止」卡; 0=不检查。
     ai_round_checkpoint: int = 100
+    # 个股 AI 分析引擎: "dsa"(默认, DSA 问股 agent, 需 DSA_VENDOR_DIR) / "legacy"(旧四维分析)。
+    # 非法值在请求时产出明确 error 事件, 不静默切换口径。
+    stock_analysis_engine: str = "dsa"
+    # DSA vendor 根目录(含 src/ 与 data_provider/); 本仓库不复制该目录, 未配置时
+    # DSA 引擎报错并提示回退方式。机器绝对路径只放在 .env(不入库), 不写进代码。
+    dsa_vendor_dir: str = ""
 
     # Server
     host: str = "0.0.0.0"

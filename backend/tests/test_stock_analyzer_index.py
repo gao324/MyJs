@@ -1,5 +1,5 @@
-"""AI 分析 prompt 指数 / ETF 文案测试。"""
-from app.services.stock_analyzer import _build_user_prompt
+"""AI 分析 prompt 指数 / ETF 文案测试（legacy 四维实现）。"""
+from app.services.stock_analyzer_legacy import _build_user_prompt
 
 
 def test_user_prompt_index_no_financials():
@@ -35,7 +35,7 @@ def test_user_prompt_etf_no_financials():
 
 def test_user_prompt_injects_paper_position():
     """模拟盘持有该标的: 注入持仓数量/成本/浮盈, 并要求 AI 给持仓建议。"""
-    from app.services.stock_analyzer import _paper_position_part, _build_user_prompt
+    from app.services.stock_analyzer_legacy import _build_user_prompt, _paper_position_part
 
     part = _paper_position_part([{"account_id": "default", "qty": 1000, "avg_cost": 10.0}],
                                 close=11.0, raw_close=11.0)
@@ -56,7 +56,7 @@ def test_user_prompt_injects_paper_position():
 
 def test_paper_position_part_multi_account():
     """V2 多账户: 逐账户注入, 空仓账户跳过, 全空返回空串。"""
-    from app.services.stock_analyzer import _paper_position_part
+    from app.services.stock_analyzer_legacy import _paper_position_part
 
     part = _paper_position_part(
         [
@@ -72,7 +72,7 @@ def test_paper_position_part_multi_account():
 
 def test_paper_position_part_empty_without_position():
     """无持仓/零仓/无效成本: 返回空串, 不注入误导性「空仓」表述。"""
-    from app.services.stock_analyzer import _paper_position_part
+    from app.services.stock_analyzer_legacy import _paper_position_part
 
     assert _paper_position_part([], 11.0, 11.0) == ""
     assert _paper_position_part([{"qty": 0, "avg_cost": 10.0}], 11.0, 11.0) == ""
@@ -84,7 +84,7 @@ def test_paper_position_part_prefers_raw_close():
 
     raw 成本 20 元, 除权后前复权 close=11、raw_close=21: 用 close 算出 -45% 是错的。
     """
-    from app.services.stock_analyzer import _paper_position_part
+    from app.services.stock_analyzer_legacy import _paper_position_part
 
     part = _paper_position_part([{"qty": 100, "avg_cost": 20.0}], close=11.0, raw_close=21.0)
     assert "+5.00%" in part
