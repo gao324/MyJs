@@ -217,3 +217,41 @@ class AkshareExtProvider:
         blocks["share_alloc"] = _safe(lambda: _records(
             ak.stock_history_dividend_detail(symbol=code, indicator="配股")), "share_alloc")
         return blocks
+
+    # ---- 非路由方法: 研报管线 stock_ai 同源取数 ----
+    # 不声明 daily/financial/realtime 数据集, 不进能力矩阵, 不改变全局路由;
+    # 先例: dragon_tiger 直接经 custom_sources 取 fuyao provider。
+
+    def get_report_kline(self, symbol: str, years: int = 3) -> list[dict]:
+        """日 K(前复权), 与 stock_ai stock_zh_a_daily(adjust="qfq") 同源同参。"""
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        return _safe(lambda: _records(
+            ak.stock_zh_a_daily(symbol=f"{market}{code}", adjust="qfq")), "kline_daily")
+
+    def get_report_financials(self, symbol: str) -> dict[str, list[dict]]:
+        """财务摘要/同花顺指标/三大报表五块。"""
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        prefixed = f"{market}{code}"
+        blocks: dict[str, list[dict]] = {
+            "fin_abstract": [], "fin_indicator_ths": [], "balance_sheet": [],
+            "income_statement": [], "cashflow": [],
+        }
+        blocks["fin_abstract"] = _safe(lambda: _records(
+            ak.stock_financial_abstract(symbol=code)), "fin_abstract")
+        blocks["fin_indicator_ths"] = _safe(lambda: _records(
+            ak.stock_financial_abstract_ths(symbol=code, indicator="按报告期")), "fin_indicator_ths")
+        for key, table in (("balance_sheet", "资产负债表"),
+                           ("income_statement", "利润表"), ("cashflow", "现金流量表")):
+            blocks[key] = _safe(lambda t=table: _records(
+                ak.stock_financial_report_sina(stock=prefixed, symbol=t)), key)
+        return blocks
+
+    def get_report_spot(self, symbol: str) -> list[dict]:
+        """全市场快照 → 该标的单行, 与 stock_ai 的 spot 块同一接口。"""
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        want = f"{market}{code}"
+        rows = _safe(lambda: _records(ak.stock_zh_a_spot()), "spot")
+        return [r for r in rows if str(r.get("代码") or "").strip().lower() == want]
