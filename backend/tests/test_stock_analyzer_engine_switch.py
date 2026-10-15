@@ -43,7 +43,7 @@ async def _collect() -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_default_engine_routes_to_dsa(monkeypatch) -> None:
+async def test_dsa_engine_routes_to_dsa(monkeypatch) -> None:
     monkeypatch.setattr(settings, "stock_analysis_engine", "dsa")
     seen: dict = {}
 
