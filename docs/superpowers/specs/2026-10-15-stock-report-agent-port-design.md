@@ -78,10 +78,11 @@
 
 ### 2.6 前端
 
-- `StockAnalysisDialog` + `custom/stock-analysis/extension.tsx`：等待态文案改「深度研报生成中，通常 3–8 分钟」；`done` 事件带 `report_id/report_url` 时完成态渲染「打开报告」按钮（`window.open`）。
-- 请求进 `lib/api.ts`，查询键进 `lib/queryKeys.ts`（集中定义）。
-- 4 个新能力均不可用（akshare 未装/插件未启用）时分析入口禁用 + tooltip 引导数据源配置（矩阵 `usable` 口径）；`REPORT_AI_API_KEY` 与全局 `AI_API_KEY` 均未解析到时 fail-closed 报错（逐项回退语义见 §2.3）。
-- `pnpm build` 验证；覆盖加载/生成中/完成/失败/禁用五态。
+- `StockAnalysisDialog` + `custom/stock-analysis/extension.tsx`：等待态文案改「深度研报生成中，通常 3–8 分钟」；`done` 事件带 `report_id/report_url` 时完成态渲染「打开报告」按钮（新标签页）；降级报告同步显示降级提示。
+- `lib/api.ts` 仅扩展流事件类型（`done` 的 `report_id/report_url/degraded`）；对话框流已覆盖进度与完成态，不新增请求函数与查询键（YAGNI）。
+- 4 个新能力均不可用（akshare 未装/插件未启用）时，后端 fail-closed 返回明确错误（含安装与启用指引），对话框走 error 事件展示；入口按钮置灰 + tooltip 门控 UI 留后续迭代（矩阵 `usable` 口径已就绪）。
+- `REPORT_AI_API_KEY` 与全局 `AI_API_KEY` 均未解析到时 fail-closed 报错（逐项回退语义见 §2.3）。
+- `pnpm build` 验证；覆盖加载/生成中/完成/失败四态（禁用态随门控 UI 后续补）。
 
 ## 3. 非目标
 
