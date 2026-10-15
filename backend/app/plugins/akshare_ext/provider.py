@@ -183,3 +183,37 @@ class AkshareExtProvider:
             ak.stock_lhb_detail_em(start_date=start, end_date=end)), "lhb")
         blocks["lhb"] = [r for r in rows if str(r.get("代码") or "").strip() == code]
         return blocks
+
+    def get_company_info(self, symbol: str) -> dict[str, list[dict]]:
+        """公司信息八块(概况/主营/新闻/公告/业绩预告/快报/分红/送转)。"""
+        import datetime as dt
+
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        blocks: dict[str, list[dict]] = {
+            "basic_info": [], "zygc": [], "news": [], "notice": [],
+            "yjyg": [], "yjkb": [], "dividend": [], "share_alloc": [],
+        }
+        blocks["basic_info"] = _safe(lambda: _records(
+            ak.stock_individual_basic_info_xq(symbol=f"{code}.{market.upper()}")), "basic_info")
+        blocks["zygc"] = _safe(lambda: _records(
+            ak.stock_zygc_em(symbol=f"{market.upper()}{code}")), "zygc")
+        blocks["news"] = _safe(lambda: _records(ak.stock_news_em(symbol=code)), "news")
+        today = dt.date.today().strftime("%Y%m%d")
+        notice = _safe(lambda: _records(
+            ak.stock_notice_report(symbol="全部", date=today)), "notice")
+        blocks["notice"] = [r for r in notice if str(r.get("代码") or "").strip() == code]
+        for period in _recent_periods(2):
+            if not blocks["yjyg"]:
+                rows = _safe(lambda p=period: _records(ak.stock_yjyg_em(date=p)), "yjyg")
+                blocks["yjyg"] = [r for r in rows
+                                  if str(r.get("股票代码") or "").strip() == code]
+            if not blocks["yjkb"]:
+                rows = _safe(lambda p=period: _records(ak.stock_yjkb_em(date=p)), "yjkb")
+                blocks["yjkb"] = [r for r in rows
+                                  if str(r.get("股票代码") or "").strip() == code]
+        blocks["dividend"] = _safe(lambda: _records(
+            ak.stock_history_dividend_detail(symbol=code, indicator="分红")), "dividend")
+        blocks["share_alloc"] = _safe(lambda: _records(
+            ak.stock_history_dividend_detail(symbol=code, indicator="配股")), "share_alloc")
+        return blocks
