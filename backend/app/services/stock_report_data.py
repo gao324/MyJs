@@ -96,7 +96,7 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
     """采集全部块; 命中当日缓存且未 force 时直接复用。返回 (blocks, missing)。
 
     missing = 取数后仍为空的块(akshare 无数据/接口异常降级), 供任务状态展示;
-    日K为空时直接抛 ReportDataUnavailable(没有 K 线无法出图与算指标)。
+    日K为空时直接抛 ReportDataUnavailableError(没有 K 线无法出图与算指标)。
     """
     symbol = _validate_symbol(symbol)
     path = cache_path(symbol)
@@ -121,7 +121,7 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
     blocks["kline_daily"] = provider.get_report_kline(symbol)
     blocks["spot"] = provider.get_report_spot(symbol)
     if not blocks.get("kline_daily"):
-        raise ReportDataUnavailable(f"标的 {symbol} 日K为空, 无法生成研报")
+        raise ReportDataUnavailableError(f"标的 {symbol} 日K为空, 无法生成研报")
 
     _indicators(blocks)
     for name in BLOCK_NAMES:
