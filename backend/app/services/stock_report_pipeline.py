@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from app.services import report_shards, stock_report_data, stock_report_jobs, stock_report_store
+from app.services.heavy_job_limiter import heavy_job_limiter
 from app.services.stock_report_data import ReportDataUnavailableError
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,24 @@ def _event(payload: dict) -> str:
 
 
 async def run_report_job(job: dict) -> None:
-    """后台任务主体; 任何异常都必须落到 job.status=error(前端不能永久转圈)。"""
+    """后台任务主体; 任何异常都必须落到 job.status=error(前端不能永久转圈)。
+
+    并发约束走 heavy_job_limiter 共享预算(非阻塞 try-acquire, 满了直接失败
+    不排队——研报任务 3-8 分钟, 排队会让前端长时间无反馈)。
+    """
+    symbol, name = job["symbol"], job["name"]
+    acquired = await asyncio.to_thread(heavy_job_limiter.acquire, "normal", timeout=0)
+    if not acquired:
+        stock_report_jobs.update(job["id"], status="error", phase="queued",
+                                 error="系统繁忙(并发研报任务已满)，请稍后重试")
+        return
+    try:
+        await _run_report_job(job)
+    finally:
+        heavy_job_limiter.release("normal")
+
+
+async def _run_report_job(job: dict) -> None:
     symbol, name = job["symbol"], job["name"]
     try:
         stock_report_jobs.update(job["id"], phase="collect", progress=5)

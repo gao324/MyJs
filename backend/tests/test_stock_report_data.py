@@ -77,6 +77,14 @@ def test_second_call_uses_cache_without_provider(patched, monkeypatch):
     assert blocks["research"] and missing == []
 
 
+def test_corrupt_cache_triggers_recollect(patched):
+    path = srd.cache_path("600519.SH")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{broken", encoding="utf-8")
+    blocks, missing = srd.collect_blocks("600519.SH")
+    assert blocks["research"] and missing == []
+
+
 def test_empty_block_lands_in_missing(patched, monkeypatch):
     provider = _FakeProvider()
     monkeypatch.setattr(provider, "get_company_info", lambda symbol: {

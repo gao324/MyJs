@@ -59,3 +59,18 @@ def test_report_job_marks_config_failure(monkeypatch):
     job = stock_report_jobs.start("600519.SH", "")
     asyncio.run(stock_report_pipeline.run_report_job(job))
     assert job["status"] == "error" and "数据源不可用" in job["error"]
+
+
+def test_report_job_rejected_when_limiter_full():
+    """并发预算占满时直接失败(不排队): heavy_job_limiter 共享预算。"""
+    from app.services.heavy_job_limiter import heavy_job_limiter
+
+    assert heavy_job_limiter.acquire("normal", timeout=0) is True
+    assert heavy_job_limiter.acquire("normal", timeout=0) is True
+    try:
+        job = stock_report_jobs.start("600519.SH", "")
+        asyncio.run(stock_report_pipeline.run_report_job(job))
+        assert job["status"] == "error" and "繁忙" in job["error"]
+    finally:
+        heavy_job_limiter.release("normal")
+        heavy_job_limiter.release("normal")

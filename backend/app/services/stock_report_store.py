@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 MAX_REPORTS = 50
 _LOCK = threading.Lock()
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
 def _base_dir() -> Path:
@@ -31,7 +33,12 @@ def _meta_path() -> Path:
 
 
 def html_path(report_id: str) -> Path:
-    return _base_dir() / "stock_reports" / f"stock-report-{report_id}.html"
+    rid = str(report_id or "").strip()
+    if not _SAFE_ID_RE.match(rid):
+        # fail-closed: id 只允许字母数字/下划线/连横线, 防路径穿越;
+        # 服务端生成的 id(sr<毫秒戳>/draft-<hex>)天然满足。
+        raise ValueError(f"非法报告 id: {report_id!r}")
+    return _base_dir() / "stock_reports" / f"stock-report-{rid}.html"
 
 
 def _load() -> list[dict]:

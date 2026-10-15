@@ -55,6 +55,16 @@ def test_html_endpoint_missing_report_is_404(client):
     assert client.get("/api/stock-reports/sr-missing/html").status_code == 404
 
 
+def test_html_path_rejects_traversal():
+    import pytest
+
+    with pytest.raises(ValueError):
+        stock_report_store.html_path("../../etc/passwd")
+    with pytest.raises(ValueError):
+        stock_report_store.html_path("")
+    assert stock_report_store.html_path("sr123").name == "stock-report-sr123.html"
+
+
 def test_list_reports_filters_by_symbol(client, monkeypatch, tmp_path):
     monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path)
     stock_report_store.save_report({"symbol": "600519.SH", "name": "贵州茅台"}, "<html>a</html>")

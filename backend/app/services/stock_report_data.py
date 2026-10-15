@@ -131,6 +131,8 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
     blocks["_analysis_date"] = cn_now().strftime("%Y-%m-%d")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"blocks": blocks, "missing": missing},
-                               ensure_ascii=False, default=str), encoding="utf-8")
+    from app.services.fs_utils import atomic_write_text
+
+    atomic_write_text(path, json.dumps({"blocks": blocks, "missing": missing},
+                                       ensure_ascii=False, default=str))
     return blocks, missing
