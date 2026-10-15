@@ -39,6 +39,7 @@ from app.api import (
     sector_rotation,
     signals,
     stock_analysis,
+    stock_reports,
     strategy,
     task_registry,
     watchlist,
@@ -581,6 +582,7 @@ app.include_router(ext_pages.router)
 app.include_router(task_registry.router)
 app.include_router(financials.router)
 app.include_router(stock_analysis.router)
+app.include_router(stock_reports.router)
 app.include_router(market_recap.router)
 app.include_router(settings_api.router)
 app.include_router(strategy.router)
