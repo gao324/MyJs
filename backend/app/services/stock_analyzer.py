@@ -1,10 +1,13 @@
-"""AI 个股分析入口 — 按开关分发 DSA 问股 agent / 旧四维分析。
+"""AI 个股分析入口 — 按开关分发深度研报 / DSA 问股 agent / 旧四维分析。
 
 开关: ``settings.stock_analysis_engine`` (env ``STOCK_ANALYSIS_ENGINE``)
-  - ``dsa``    (默认) → ``stock_analyzer_dsa``: DSA 问股 agent(需 ``DSA_VENDOR_DIR``)
-  - ``legacy``        → ``stock_analyzer_legacy``: 原「技术/基本/财务/消息面」四维流式分析
+  - ``report`` (默认) → ``stock_report_pipeline``: 个股深度研报(数据采集→七分片
+    分析→模板渲染→17 条终验, 产出 HTML 报告; 需 akshare_ext 数据源与 REPORT_AI_*)
+  - ``dsa``             → ``stock_analyzer_dsa``: DSA 问股 agent(需 ``DSA_VENDOR_DIR``)
+  - ``legacy``          → ``stock_analyzer_legacy``: 原「技术/基本/财务/消息面」四维流式分析
 
-两种实现共用同一 NDJSON 协议(meta / delta / error / done), 前端解析无差异。
+三种实现共用同一 NDJSON 协议(meta / delta / error / done), 前端解析无差异
+(report 引擎的 done 事件额外携带 report_id / report_url)。
 引擎值非法或所选引擎不可用时产出 ``error`` 事件(fail-closed), 不静默切换口径。
 """
 from __future__ import annotations
@@ -18,9 +21,10 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+ENGINE_REPORT = "report"
 ENGINE_DSA = "dsa"
 ENGINE_LEGACY = "legacy"
-VALID_ENGINES = (ENGINE_DSA, ENGINE_LEGACY)
+VALID_ENGINES = (ENGINE_REPORT, ENGINE_DSA, ENGINE_LEGACY)
 
 
 def resolve_engine() -> str:
@@ -45,6 +49,15 @@ async def analyze_stock_stream(
     except ValueError as exc:
         logger.error("stock analysis engine misconfigured: %s", exc)
         yield json.dumps({"type": "error", "message": str(exc)}, ensure_ascii=False)
+        return
+
+    if engine == ENGINE_REPORT:
+        from app.services import stock_report_pipeline
+
+        async for chunk in stock_report_pipeline.analyze_stock_stream(
+            repo, data_dir, symbol, focus
+        ):
+            yield chunk
         return
 
     if engine == ENGINE_LEGACY:
