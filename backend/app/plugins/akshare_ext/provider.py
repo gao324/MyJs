@@ -128,3 +128,38 @@ class AkshareExtProvider:
                 blocks["fund_hold"] = rows
                 break
         return blocks
+
+    def get_shareholders(self, symbol: str) -> dict[str, list[dict]]:
+        """股东/股本五块(十大股东、股东户数、股本结构、限售解禁、高管持股变动)。"""
+        ak = _import_ak()
+        code, market = _split_symbol(symbol)
+        blocks: dict[str, list[dict]] = {
+            "top10": [], "gdhs": [], "share_structure": [],
+            "release": [], "share_hold_change": [],
+        }
+        for period in _recent_periods(4):
+            rows = _safe(lambda p=period: _records(
+                ak.stock_gdfx_top_10_em(symbol=f"{market}{code}", date=p)), "top10")
+            if rows:
+                blocks["top10"] = rows
+                break
+        if not blocks["top10"]:
+            for period in _recent_periods(4):
+                rows = _safe(lambda p=period: _records(
+                    ak.stock_gdfx_free_top_10_em(symbol=f"{market}{code}", date=p)), "top10")
+                if rows:
+                    blocks["top10"] = rows
+                    break
+        blocks["gdhs"] = _safe(lambda: _records(
+            ak.stock_zh_a_gdhs_detail_em(symbol=code)), "gdhs")
+        blocks["share_structure"] = _safe(lambda: _records(
+            ak.stock_zh_a_gbjg_em(symbol=f"{code}.{market.upper()}")), "share_structure")
+        blocks["release"] = _safe(lambda: _records(
+            ak.stock_restricted_release_queue_em(symbol=code)), "release")
+        if market == "sz":
+            blocks["share_hold_change"] = _safe(lambda: _records(
+                ak.stock_share_hold_change_szse(symbol=code)), "share_hold_change")
+        else:
+            blocks["share_hold_change"] = _safe(lambda: _records(
+                ak.stock_share_hold_change_sse(symbol=code)), "share_hold_change")
+        return blocks
