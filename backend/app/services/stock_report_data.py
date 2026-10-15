@@ -1,6 +1,6 @@
 """研报块收集 — akshare_ext 同源取数 + 技术指标计算 + 当日缓存。
 
-与 stock_ai Phase 1 的 data_{code}.json 块名逐一对齐(26 个取数块 + 2 个计算块),
+与 stock_ai Phase 1 的 data_{code}.json 块名逐一对齐(27 个取数块 + 2 个计算块),
 保证 digest / 渲染 / 一致性验收可比。取数走 provider 的**非路由**方法(先例:
 dragon_tiger 直接经 custom_sources 取 fuyao), 锁定与 stock_ai 同源。
 """
@@ -14,6 +14,7 @@ from pathlib import Path
 from app.config import settings
 from app.market_time import cn_now
 from app.reporting import technical_indicators as ti
+from app.services.fs_utils import atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,12 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
     if path.exists() and not force:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-            return payload["blocks"], list(payload.get("missing") or [])
+            cached = payload["blocks"]
+            # 跨版本缓存可能缺新块, 统一补齐并重算 missing(取数零成本)
+            for name in BLOCK_NAMES:
+                cached.setdefault(name, [])
+            missing = [name for name in BLOCK_NAMES if not cached.get(name)]
+            return cached, missing
         except (OSError, ValueError, KeyError, TypeError):
             logger.warning("[report-data] 缓存损坏, 重新采集: %s", path)
 
@@ -131,8 +137,6 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
     blocks["_analysis_date"] = cn_now().strftime("%Y-%m-%d")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    from app.services.fs_utils import atomic_write_text
-
     atomic_write_text(path, json.dumps({"blocks": blocks, "missing": missing},
                                        ensure_ascii=False, default=str))
     return blocks, missing

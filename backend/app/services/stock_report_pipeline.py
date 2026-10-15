@@ -25,8 +25,6 @@ PHASE_LABELS = {
     "validate": "Phase 4/4 终验中",
 }
 POLL_SECONDS = 2.0  # 对话框进度轮询间隔(测试 monkeypatch 缩短)
-# 已派发后台任务的 job id 集合(避免同一任务重复派发; API 返回的 job 字典保持干净)
-_SPAWNED_JOBS: set[str] = set()
 
 
 def _event(payload: dict) -> str:
@@ -83,6 +81,7 @@ async def _run_report_job(job: dict) -> None:
         record = stock_report_store.save_report(
             {"symbol": symbol, "name": name, "status": status, "fill_rate": rate,
              "failed_shards": failed, "missing_blocks": missing}, html)
+        draft.unlink(missing_ok=True)
         stock_report_jobs.update(
             job["id"], status="done", phase="done", progress=100,
             report_id=record["id"],
@@ -101,10 +100,9 @@ async def analyze_stock_stream(repo, data_dir: Path, symbol: str,
     symbol = (symbol or "").strip().upper()
     job = stock_report_jobs.find_running(symbol)
     if job is None:
+        # find → start → spawn 之间无 await, 单线程事件循环内天然原子, 不会重复派发
         job = stock_report_jobs.start(symbol, "")
-        if job["id"] not in _SPAWNED_JOBS:
-            _SPAWNED_JOBS.add(job["id"])
-            stock_report_jobs._spawn(job, lambda j: run_report_job(j))
+        stock_report_jobs._spawn(job, lambda j: run_report_job(j))
     yield _event({"type": "meta", "symbol": symbol,
                   "summary": "深度研报生成中(通常 3-8 分钟)", "job_id": job["id"]})
     seen = ""
