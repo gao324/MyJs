@@ -92,13 +92,13 @@ def test_missing_kline_raises(patched, monkeypatch):
     provider = _FakeProvider()
     monkeypatch.setattr(provider, "get_report_kline", lambda symbol, years=3: [])
     monkeypatch.setattr(srd, "_provider", lambda: provider)
-    with pytest.raises(srd.ReportDataUnavailable):
+    with pytest.raises(srd.ReportDataUnavailableError):
         srd.collect_blocks("600519.SH")
 
 
 def test_unavailable_provider_raises(patched, monkeypatch):
     monkeypatch.setattr(srd, "_provider", lambda: None)
-    with pytest.raises(srd.ReportDataUnavailable):
+    with pytest.raises(srd.ReportDataUnavailableError):
         srd.collect_blocks("600519.SH")
 
 

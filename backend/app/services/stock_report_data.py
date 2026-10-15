@@ -36,7 +36,7 @@ SKIPPED_BLOCKS: tuple[str, ...] = ("kline_minute",)
 _SYMBOL_RE = re.compile(r"^\d{6}\.(SH|SZ|BJ)$")
 
 
-class ReportDataUnavailable(ValueError):
+class ReportDataUnavailableError(ValueError):
     """数据层不可用(fail-closed): provider 缺失或日K为空。"""
 
 
@@ -109,7 +109,7 @@ def collect_blocks(symbol: str, *, force: bool = False) -> tuple[dict, list[str]
 
     provider = _provider()
     if provider is None:
-        raise ReportDataUnavailable(
+        raise ReportDataUnavailableError(
             "akshare_ext 数据源不可用: 请安装 akshare 并在数据源设置中启用该插件")
 
     blocks: dict = {}
