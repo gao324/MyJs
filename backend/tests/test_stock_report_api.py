@@ -9,6 +9,14 @@ from app.api import stock_reports as api_mod
 from app.services import stock_report_jobs, stock_report_store
 
 
+@pytest.fixture(autouse=True)
+def _isolated_jobs():
+    """任务表是模块全局状态: 每个测试前后清空, 防止 running 残留污染后续测试文件。"""
+    stock_report_jobs._JOBS.clear()
+    yield
+    stock_report_jobs._JOBS.clear()
+
+
 @pytest.fixture()
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path, raising=False)

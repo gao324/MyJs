@@ -4,7 +4,17 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from app.services import stock_analyzer, stock_report_jobs, stock_report_pipeline
+
+
+@pytest.fixture(autouse=True)
+def _isolated_jobs():
+    """任务表是模块全局状态: 每个测试前后清空, 防止跨文件污染导致轮询挂起。"""
+    stock_report_jobs._JOBS.clear()
+    yield
+    stock_report_jobs._JOBS.clear()
 
 
 async def _collect(agen):
@@ -59,6 +69,40 @@ def test_report_job_marks_config_failure(monkeypatch):
     job = stock_report_jobs.start("600519.SH", "")
     asyncio.run(stock_report_pipeline.run_report_job(job))
     assert job["status"] == "error" and "数据源不可用" in job["error"]
+
+
+def test_full_job_renders_and_publishes_with_fixture_data(monkeypatch, tmp_path):
+    """全链路集成: 采集与 LLM 用桩, 渲染/终验/存储走真实实现。"""
+    import json
+    from pathlib import Path
+
+    from app.services import report_shards, stock_report_data, stock_report_store
+
+    monkeypatch.setattr(stock_report_data.settings, "data_dir", tmp_path, raising=False)
+    monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path / "user_data")
+
+    fx = Path(__file__).parent / "fixtures" / "stock_report"
+    blocks = json.loads((fx / "data_600519.json").read_text(encoding="utf-8"))["blocks"]
+    content = json.loads((fx / "content_600519.json").read_text(encoding="utf-8"))
+
+    monkeypatch.setattr(stock_report_data, "collect_blocks",
+                        lambda symbol, force=False: (blocks, []))
+
+    async def _fake_shards(code, name, blocks):
+        return content, []
+
+    monkeypatch.setattr(report_shards, "analyze_shards", _fake_shards)
+
+    job = stock_report_jobs.start("600519.SH", "贵州茅台")
+    asyncio.run(stock_report_pipeline.run_report_job(job))
+
+    assert job["status"] == "done"
+    assert job["report_id"]
+    record = stock_report_store.get_report(job["report_id"])
+    assert record is not None and record["fill_rate"] >= 0.5
+    assert stock_report_store.html_path(job["report_id"]).exists()
+    drafts = list((tmp_path / "user_data" / "stock_reports").glob("stock-report-draft-*"))
+    assert drafts == []
 
 
 def test_report_job_rejected_when_limiter_full():
