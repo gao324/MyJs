@@ -37,7 +37,6 @@ async def run_report_job(job: dict) -> None:
     并发约束走 heavy_job_limiter 共享预算(非阻塞 try-acquire, 满了直接失败
     不排队——研报任务 3-8 分钟, 排队会让前端长时间无反馈)。
     """
-    symbol, name = job["symbol"], job["name"]
     acquired = await asyncio.to_thread(heavy_job_limiter.acquire, "normal", timeout=0)
     if not acquired:
         stock_report_jobs.update(job["id"], status="error", phase="queued",
