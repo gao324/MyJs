@@ -306,6 +306,28 @@ def get_financial_provider() -> str:
     return provider if provider in _allowed_data_providers() else "tickflow"
 
 
+# 研报扩展能力(akshare_ext 插件): 没有等价回退源, 插件未注册时返回 akshare_ext
+# 本身 —— 该能力在能力矩阵里 usable=False, 由前端置灰并引导安装 akshare。
+def get_research_data_provider() -> str:
+    provider = str(load().get("research_data_provider", "akshare_ext") or "akshare_ext").lower()
+    return provider if provider in _allowed_data_providers() else "akshare_ext"
+
+
+def get_shareholders_data_provider() -> str:
+    provider = str(load().get("shareholders_data_provider", "akshare_ext") or "akshare_ext").lower()
+    return provider if provider in _allowed_data_providers() else "akshare_ext"
+
+
+def get_fund_flow_data_provider() -> str:
+    provider = str(load().get("fund_flow_data_provider", "akshare_ext") or "akshare_ext").lower()
+    return provider if provider in _allowed_data_providers() else "akshare_ext"
+
+
+def get_company_info_data_provider() -> str:
+    provider = str(load().get("company_info_data_provider", "akshare_ext") or "akshare_ext").lower()
+    return provider if provider in _allowed_data_providers() else "akshare_ext"
+
+
 # ===== 盘后管道拉取内容开关 (A股 / ETF / 指数 独立控制) =====
 
 def get_pipeline_pull_a_share() -> bool:

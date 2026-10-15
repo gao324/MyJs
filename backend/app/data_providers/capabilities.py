@@ -86,6 +86,39 @@ CAPABILITY_REGISTRY: list[dict] = [
         # TickFlow 侧需 Expert 档; 插件/自定义源声明 full_minute 数据集即可提供
         # (插件实现 get_intraday_batch / 可选 get_intraday_latest, YAML 仅修复轮)
     },
+    # 研报扩展能力(akshare_ext 插件): TickFlow 不提供, tf_tier="never" 使其永不进候选
+    {
+        "id": "research",
+        "label": "研报与评级",
+        "desc": "券商研报、机构评级、盈利预测与基金持仓(研报管线专用)",
+        "field": "research_data_provider",
+        "default": "akshare_ext",
+        "tf_tier": "never",
+    },
+    {
+        "id": "shareholders",
+        "label": "股东与股本",
+        "desc": "十大股东/流通股东、股东户数、股本结构、限售解禁、高管持股变动",
+        "field": "shareholders_data_provider",
+        "default": "akshare_ext",
+        "tf_tier": "never",
+    },
+    {
+        "id": "fund_flow",
+        "label": "资金流与融资融券",
+        "desc": "个股资金流向、融资融券、龙虎榜(研报管线专用)",
+        "field": "fund_flow_data_provider",
+        "default": "akshare_ext",
+        "tf_tier": "never",
+    },
+    {
+        "id": "company_info",
+        "label": "公司信息与公告",
+        "desc": "公司概况、主营构成、新闻、公告、业绩预告/快报、分红送配",
+        "field": "company_info_data_provider",
+        "default": "akshare_ext",
+        "tf_tier": "never",
+    },
 ]
 
 _TICKFLOW_CANDIDATE = {
@@ -98,7 +131,8 @@ _TICKFLOW_CANDIDATE = {
 }
 
 # 档位排序: none 最低 (无 Key/无效 Key, 仅免费通道历史日K), 未知档按 none 处理 (fail-closed)
-_TIER_RANK = {"none": -1, "free": 0, "starter": 1, "pro": 2, "expert": 3}
+# never: TickFlow 完全不提供该数据集(研报扩展能力), 任何真实档位都不进候选
+_TIER_RANK = {"none": -1, "free": 0, "starter": 1, "pro": 2, "expert": 3, "never": 99}
 
 
 def _tier_base(tier: str) -> str:
@@ -224,6 +258,10 @@ def _current_routing() -> dict[str, str]:
         "depth5_data_provider": preferences.get_depth5_data_provider(),
         "adj_factor_provider": preferences.get_adj_factor_provider(),
         "financial_data_provider": preferences.get_financial_provider(),
+        "research_data_provider": preferences.get_research_data_provider(),
+        "shareholders_data_provider": preferences.get_shareholders_data_provider(),
+        "fund_flow_data_provider": preferences.get_fund_flow_data_provider(),
+        "company_info_data_provider": preferences.get_company_info_data_provider(),
     }
 
 

@@ -1,0 +1,9 @@
+name: akshare_ext
+display_name: "AKShare 研报扩展"
+runtime: python
+entry: app.plugins.akshare_ext.provider:AkshareExtProvider
+check: app.plugins.akshare_ext.provider:availability
+datasets: [research, shareholders, fund_flow, company_info]
+description: "研报管线专用数据集(研报/股东/资金流/公司信息); 数据源 akshare, 未安装时置灰, 不影响其他数据源"
+install_hint: "pip install akshare"
+homepage: "https://akshare.akfamily.xyz"

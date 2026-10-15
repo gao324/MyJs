@@ -21,6 +21,10 @@ DEFAULT_CURRENT = {
     "depth5_data_provider": "tickflow",
     "realtime_data_provider": "tickflow",
     "financial_data_provider": "tickflow",
+    "research_data_provider": "akshare_ext",
+    "shareholders_data_provider": "akshare_ext",
+    "fund_flow_data_provider": "akshare_ext",
+    "company_info_data_provider": "akshare_ext",
 }
 
 
@@ -41,15 +45,23 @@ def test_registry_covers_all_routing_fields():
     assert len(set(routable)) == len(routable)
     assert {c["id"] for c in CAPABILITY_REGISTRY} == {
         "realtime", "daily", "minute", "full_minute", "depth5", "adj_factor", "financial",
+        "research", "shareholders", "fund_flow", "company_info",
     }
     full_minute = next(c for c in CAPABILITY_REGISTRY if c["id"] == "full_minute")
     assert full_minute["field"] == "full_minute_data_provider"
     assert full_minute["tf_tier"] == "expert"
+    never_caps = {"research", "shareholders", "fund_flow", "company_info"}
     for cap in CAPABILITY_REGISTRY:
-        # 默认数据源: GM 优先 ( GM 未声明 full_minute, 该能力保持 tickflow )
-        expected = "tickflow" if cap["id"] == "full_minute" else "gm"
+        # 默认数据源: GM 优先 ( GM 未声明 full_minute, 该能力保持 tickflow;
+        # 研报扩展能力由 akshare_ext 插件提供, TickFlow 不提供 )
+        if cap["id"] == "full_minute":
+            expected = "tickflow"
+        elif cap["id"] in never_caps:
+            expected = "akshare_ext"
+        else:
+            expected = "gm"
         assert cap["default"] == expected
-        assert cap["tf_tier"] in ("none", "starter", "pro", "expert")
+        assert cap["tf_tier"] in ("none", "starter", "pro", "expert", "never")
         assert "follow" not in cap
 
 
@@ -58,8 +70,14 @@ def test_matrix_without_third_party_sources(monkeypatch):
     _fake_sources(monkeypatch, [])
     matrix = build_capability_matrix(dict(DEFAULT_CURRENT), tickflow_tier="expert")
     assert matrix["tickflow_tier"] == "expert"
-    assert len(matrix["capabilities"]) == 7
+    assert len(matrix["capabilities"]) == 11
     for cap in matrix["capabilities"]:
+        if cap["tf_tier"] == "never":
+            # 研报扩展能力: TickFlow 永不提供; 无第三来源时无候选、不可用
+            assert cap["tf_available"] is False
+            assert cap["candidates"] == []
+            assert cap["usable"] is False
+            continue
         names = [c["name"] for c in cap["candidates"]]
         assert names == ["tickflow"]
         assert cap["candidates"][0]["kind"] == "builtin"
@@ -291,6 +309,10 @@ def test_api_endpoint_injects_all_routing_preferences(monkeypatch):
         "depth5_data_provider": "d5-src",
         "adj_factor_provider": "adj-src",
         "financial_data_provider": "fin-src",
+        "research_data_provider": "research-src",
+        "shareholders_data_provider": "holders-src",
+        "fund_flow_data_provider": "flow-src",
+        "company_info_data_provider": "company-src",
     }
     getter_names = {
         "realtime_data_provider": "get_realtime_data_provider",
@@ -300,6 +322,10 @@ def test_api_endpoint_injects_all_routing_preferences(monkeypatch):
         "depth5_data_provider": "get_depth5_data_provider",
         "adj_factor_provider": "get_adj_factor_provider",
         "financial_data_provider": "get_financial_provider",
+        "research_data_provider": "get_research_data_provider",
+        "shareholders_data_provider": "get_shareholders_data_provider",
+        "fund_flow_data_provider": "get_fund_flow_data_provider",
+        "company_info_data_provider": "get_company_info_data_provider",
     }
     for field, getter in getter_names.items():
         monkeypatch.setattr(preferences, getter, lambda f=field: getter_values[f])
