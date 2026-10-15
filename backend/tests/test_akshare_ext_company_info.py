@@ -58,3 +58,40 @@ def test_company_info_missing_frames_yield_empty_blocks(monkeypatch):
     assert set(blocks) == {"basic_info", "zygc", "news", "notice", "yjyg", "yjkb",
                            "dividend", "share_alloc"}
     assert all(rows == [] for rows in blocks.values())
+
+
+def test_basic_info_uses_uppercase_prefixed_symbol(monkeypatch):
+    """概况接口用大写前缀形式(SH600519, 与 stock_ai 同参)。"""
+    seen: dict[str, str] = {}
+
+    def _basic(symbol):
+        seen["symbol"] = symbol
+        return _FakeFrame([])
+
+    _install(monkeypatch, {
+        "stock_individual_basic_info_xq": _basic,
+        "stock_zygc_em": lambda symbol: _FakeFrame([]),
+        "stock_news_em": lambda symbol: _FakeFrame([]),
+        "stock_notice_report": lambda symbol, date: _FakeFrame([]),
+        "stock_yjyg_em": lambda date: _FakeFrame([]),
+        "stock_yjkb_em": lambda date: _FakeFrame([]),
+        "stock_history_dividend_detail": lambda symbol, indicator: _FakeFrame([]),
+    })
+    AkshareExtProvider().get_company_info("600519.SH")
+    assert seen == {"symbol": "SH600519"}
+
+
+def test_yj_blocks_concatenate_periods(monkeypatch):
+    """业绩预告/快报拼接多个报告期(与 stock_ai 多 submit 合并一致)。"""
+    _install(monkeypatch, {
+        "stock_individual_basic_info_xq": lambda symbol: _FakeFrame([]),
+        "stock_zygc_em": lambda symbol: _FakeFrame([]),
+        "stock_news_em": lambda symbol: _FakeFrame([]),
+        "stock_notice_report": lambda symbol, date: _FakeFrame([]),
+        "stock_yjyg_em": lambda date: _FakeFrame([{"股票代码": "600519", "预测": date}]),
+        "stock_yjkb_em": lambda date: _FakeFrame([]),
+        "stock_history_dividend_detail": lambda symbol, indicator: _FakeFrame([]),
+    })
+    blocks = AkshareExtProvider().get_company_info("600519.SH")
+    assert len(blocks["yjyg"]) == 4
+    assert len({r["预测"] for r in blocks["yjyg"]}) == 4

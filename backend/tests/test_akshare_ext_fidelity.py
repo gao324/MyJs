@@ -23,16 +23,21 @@ def _install(monkeypatch, mapping):
 
 
 def test_report_kline_uses_qfq_adjust(monkeypatch):
+    import datetime as dt
+
+    from app.plugins.akshare_ext import provider as mod
+
     seen: dict[str, str] = {}
 
-    def _daily(symbol, adjust=""):
-        seen["symbol"] = symbol
-        seen["adjust"] = adjust
+    def _daily(symbol, start_date="", end_date="", adjust=""):
+        seen.update(symbol=symbol, start=start_date, end=end_date, adjust=adjust)
         return _FakeFrame([{"date": "2026-10-14", "open": 1.0, "close": 1.1}])
 
     _install(monkeypatch, {"stock_zh_a_daily": _daily})
     rows = AkshareExtProvider().get_report_kline("600519.SH")
-    assert seen == {"symbol": "sh600519", "adjust": "qfq"}
+    dates = mod.report_dates(dt.date.today())
+    assert seen == {"symbol": "sh600519", "start": dates["kline_start"],
+                    "end": dates["today_s"], "adjust": "qfq"}
     assert rows[0]["close"] == 1.1
 
 
@@ -64,3 +69,12 @@ def test_report_spot_missing_symbol_yields_empty(monkeypatch):
         "stock_zh_a_spot": lambda: _FakeFrame([{"代码": "sz000001", "名称": "平安银行"}]),
     })
     assert AkshareExtProvider().get_report_spot("600519.SH") == []
+
+
+def test_report_spot_falls_back_to_suffix_match(monkeypatch):
+    """精确匹配失败时按后缀回退(与 stock_ai spot_task 同规则)。"""
+    _install(monkeypatch, {
+        "stock_zh_a_spot": lambda: _FakeFrame([{"代码": "SH600519", "名称": "贵州茅台"}]),
+    })
+    rows = AkshareExtProvider().get_report_spot("600519.SH")
+    assert [r["名称"] for r in rows] == ["贵州茅台"]

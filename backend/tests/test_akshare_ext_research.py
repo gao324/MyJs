@@ -59,3 +59,17 @@ def test_non_finite_values_become_none(monkeypatch):
     })
     blocks = AkshareExtProvider().get_research("600519.SH")
     assert blocks["research"][0]["目标价"] is None
+
+
+def test_recommend_filters_single_stock(monkeypatch):
+    """recommend 是全市场表, 只保留本股行(与 stock_ai _filter_by_code 同规则)。"""
+    _install(monkeypatch, {
+        "stock_research_report_em": lambda symbol: _FakeFrame([]),
+        "stock_institute_recommend": lambda symbol: _FakeFrame([
+            {"股票代码": "600519", "综合评级": "买入"},
+            {"股票代码": "000001", "综合评级": "增持"},
+        ]),
+        "stock_report_fund_hold_detail": lambda symbol, date: _FakeFrame([]),
+    })
+    blocks = AkshareExtProvider().get_research("600519.SH")
+    assert [r["股票代码"] for r in blocks["recommend"]] == ["600519"]

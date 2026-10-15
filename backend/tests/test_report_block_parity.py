@@ -34,6 +34,22 @@ def test_compare_blocks_ignores_kline_minute():
     assert compare_blocks(left, right) == []
 
 
+def test_cli_output_is_ascii_safe(tmp_path, capsys):
+    """CLI 输出必须 GBK 可编码(Windows GBK 控制台打不出 emoji 等生僻字符)。
+
+    中文在 GBK 下合法, 故不断言纯 ASCII, 而断言 GBK 严格编码不抛错。
+    """
+    from scripts.compare_stock_report_blocks import main
+
+    left = tmp_path / "a.json"
+    right = tmp_path / "b.json"
+    left.write_text('{"blocks": {"spot": [{"x": 1}]}}', encoding="utf-8")
+    right.write_text('{"blocks": {"spot": [{"x": 2}]}}', encoding="utf-8")
+    assert main(["--stock-ai", str(left), "--ours", str(right)]) == 1
+    out = capsys.readouterr().out
+    out.encode("gbk")
+
+
 def test_digest_render_validate_from_stock_ai_blocks(tmp_path):
     """验收口径: 同一 stock_ai 缓存 → digest 结构完整 + 渲染 + 17 条全绿。"""
     blocks, content = _payload()

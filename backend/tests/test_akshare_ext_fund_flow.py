@@ -63,3 +63,31 @@ def test_sz_symbol_uses_szse_margin(monkeypatch):
     blocks = AkshareExtProvider().get_fund_flow("000001.SZ")
     assert calls == ["szse"]
     assert blocks["margin"][0]["融资余额"] == 2
+
+
+def test_margin_uses_previous_trading_day_and_lhb_40_day_window(monkeypatch):
+    import datetime as dt
+
+    from app.plugins.akshare_ext import provider as mod
+
+    seen: dict[str, str] = {}
+
+    def _margin(date):
+        seen["margin_date"] = date
+        return _FakeFrame([{"代码": "600519", "融资余额": 5}])
+
+    def _lhb(start_date, end_date):
+        seen["start"] = start_date
+        seen["end"] = end_date
+        return _FakeFrame([])
+
+    _install(monkeypatch, {
+        "stock_individual_fund_flow": lambda stock, market: _FakeFrame([]),
+        "stock_margin_detail_sse": _margin,
+        "stock_lhb_detail_em": _lhb,
+    })
+    AkshareExtProvider().get_fund_flow("600519.SH")
+    dates = mod.report_dates(dt.date.today())
+    assert seen["margin_date"] == dates["last_trade_prev_s"]
+    assert seen["end"] == dates["today_s"]
+    assert seen["start"] == dates["month_ago_s"]

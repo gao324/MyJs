@@ -22,7 +22,8 @@ class _FakeProvider:
                 "fund_hold": [{"基金名称": "f"}]}
 
     def get_shareholders(self, symbol):
-        return {"top10": [{"股东名称": "A"}], "gdhs": [{"股东户数-本次": 1}],
+        return {"top10": [{"股东名称": "A"}], "top10_free": [{"股东名称": "B"}],
+                "gdhs": [{"股东户数-本次": 1}],
                 "share_structure": [{"变动日期": "2026-01-01"}],
                 "release": [{"解禁数量": 1}], "share_hold_change": [{"姓名": "张三"}]}
 

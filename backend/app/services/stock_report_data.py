@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 
 PROVIDER_NAME = "akshare_ext"
 
-# 与 stock_ai stock_full_report.py 的 submit() 键名一致(26 块)
+# 与 stock_ai stock_full_report.py 的 submit() 键名一致(27 块;
+# 十大股东与十大流通股东是两个独立块, 不互为回退)
 BLOCK_NAMES: tuple[str, ...] = (
     "basic_info", "spot", "share_structure", "zygc", "kline_daily",
     "fund_flow", "lhb", "fin_abstract", "fin_indicator_ths", "balance_sheet",
-    "income_statement", "cashflow", "yjyg", "yjkb", "top10", "gdhs",
+    "income_statement", "cashflow", "yjyg", "yjkb", "top10", "top10_free", "gdhs",
     "share_hold_change", "dividend", "share_alloc", "release", "notice", "news",
     "research", "recommend", "fund_hold", "margin",
 )
