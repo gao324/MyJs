@@ -11,6 +11,8 @@ import uuid
 
 JOB_KINDS = ("stock_report",)
 _JOBS: dict[str, dict] = {}
+# 任务表上限: 超出时丢弃最旧的终态任务(running 任务永不丢弃)
+MAX_JOBS = 50
 # 后台任务引用集: 防止事件循环只持有弱引用导致任务中途被回收;
 # 任务结束即从集合移除, 不长期占用内存。
 _BACKGROUND: set = set()
@@ -26,12 +28,22 @@ def find_running(symbol: str) -> dict | None:
 
 
 def start(symbol: str, name: str) -> dict:
-    """新建任务(调用方已确认无同 symbol running 任务)。"""
+    """新建任务(调用方已确认无同 symbol running 任务); 超限时裁剪最旧终态任务。"""
     job = {"id": uuid.uuid4().hex[:12], "symbol": symbol, "name": name,
            "status": "running", "phase": "queued", "progress": 0,
            "started_at": time.time(), "error": "", "report_id": ""}
     _JOBS[job["id"]] = job
+    _prune()
     return job
+
+
+def _prune() -> None:
+    """丢弃最旧的终态任务(running 任务保留), 防止任务表无界增长。"""
+    terminal = sorted(
+        (j for j in _JOBS.values() if j.get("status") != "running"),
+        key=lambda j: j.get("started_at", 0))
+    while len(_JOBS) > MAX_JOBS and terminal:
+        _JOBS.pop(terminal.pop(0)["id"], None)
 
 
 def update(job_id: str, **fields) -> None:

@@ -79,3 +79,30 @@ def test_saved_reports_capped_at_fifty(client, monkeypatch, tmp_path):
     for i in range(5):
         stock_report_store.save_report({"symbol": "600519.SH", "name": "贵州茅台"}, f"<html>{i}</html>")
     assert len(stock_report_store.list_reports()) == 3
+
+
+def test_job_response_has_no_internal_keys(client, monkeypatch):
+    """任务派发标记等内部字段不得出现在 API 返回里。"""
+    monkeypatch.setattr(stock_report_jobs, "_spawn", lambda job, runner: None)
+    res = client.post("/api/stock-reports/generate", json={"symbol": "600519.SH"})
+    job = res.json()["job"]
+    assert "_spawned" not in job
+    status = client.get(f"/api/stock-reports/{job['id']}")
+    assert "_spawned" not in status.json()["job"]
+
+
+def test_finished_jobs_pruned_beyond_cap(monkeypatch):
+    """任务表超限时丢弃最旧终态任务, running 任务永不丢弃。"""
+    monkeypatch.setattr(stock_report_jobs, "MAX_JOBS", 3)
+    saved = dict(stock_report_jobs._JOBS)
+    stock_report_jobs._JOBS.clear()
+    try:
+        ids = [stock_report_jobs.start(f"60000{i}.SH", "")["id"] for i in range(5)]
+        for jid in ids:
+            stock_report_jobs.update(jid, status="done")
+        running = stock_report_jobs.start("600519.SH", "")
+        assert len(stock_report_jobs._JOBS) == 3
+        assert running["id"] in stock_report_jobs._JOBS
+    finally:
+        stock_report_jobs._JOBS.clear()
+        stock_report_jobs._JOBS.update(saved)
