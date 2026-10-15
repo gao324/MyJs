@@ -13,6 +13,7 @@ import tempfile
 import time
 import tomllib
 from collections.abc import AsyncIterator, Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from urllib.parse import urlsplit, urlunsplit
@@ -72,6 +73,22 @@ _CODEX_ENV_ALLOWLIST = (
 )
 
 Message = dict[str, str]
+
+
+@dataclass(frozen=True)
+class AiEndpointOverride:
+    """单次调用的 AI 端点覆盖(研报管线专用); 空字段回退全局解析。
+
+    设置了任一项即强制走 openai_compat chat.completions 路径(codex_cli /
+    responses 协议不支持覆盖, 见 generate_ai_text)。
+    """
+
+    base_url: str = ""
+    api_key: str = ""
+    model: str = ""
+
+    def is_empty(self) -> bool:
+        return not (self.base_url or self.api_key or self.model)
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
@@ -328,6 +345,8 @@ async def generate_ai_text(
     temperature: float | None = 0.3,
     max_tokens: int | None = 3000,
     timeout: float = 180.0,
+    response_format: dict | None = None,
+    ai_config: AiEndpointOverride | None = None,
 ) -> str:
     """Return a complete AI response from the currently configured provider.
 
@@ -335,9 +354,27 @@ async def generate_ai_text(
     (如 deepseek reasoner 系)的思考 token 计入 max_tokens 预算, 显式限制
     会挤占正文甚至全部吃光(正文 0 字 + finish=length), 长分析类调用应放开。
     显式传入的数值会被钳制到配置的输出上限 (AI 设置可调)。
+
+    response_format: 需要严格 JSON 时传 {"type": "json_object"}; 上游 400 拒绝
+    该参数时由重试路径自动去掉后重发一次(见 _openai_retry_kwargs)。
+    ai_config: 研报管线专用端点覆盖; 非空时强制走 openai_compat 路径,
+    不做 codex_cli / responses 分支。
     """
     max_tokens = _resolve_max_tokens(max_tokens)
     _check_input_budget(messages, max_tokens=max_tokens)
+    # 仅在需要时传 response_format: 保持既有调用方(含测试打桩)的调用形态不变
+    extra: dict = {}
+    if response_format is not None:
+        extra["response_format"] = response_format
+    if ai_config is not None and not ai_config.is_empty():
+        return await _run_openai_once(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            ai_config=ai_config,
+            **extra,
+        )
     if is_codex_cli_provider():
         return await _run_codex_cli(messages, max_tokens=max_tokens, timeout=max(timeout, 600.0))
     if is_responses_protocol():
@@ -354,6 +391,7 @@ async def generate_ai_text(
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
+        **extra,
     )
 
 
@@ -516,12 +554,16 @@ async def _run_openai_once(
     temperature: float | None,
     max_tokens: int | None,
     timeout: float,
+    response_format: dict | None = None,
+    ai_config: AiEndpointOverride | None = None,
 ) -> str:
     message = await _run_openai_message_once(
         messages,
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
+        response_format=response_format,
+        ai_config=ai_config,
     )
     if message is None:
         return ""
@@ -535,20 +577,25 @@ async def _run_openai_message_once(
     max_tokens: int | None,
     timeout: float,
     tools: Sequence[dict] | None = None,
+    response_format: dict | None = None,
+    ai_config: AiEndpointOverride | None = None,
 ):
     """一次 OpenAI create() 调用, 返回完整 message (含 tool_calls, 而非仅 content)。
 
     _run_openai_once 只取 .content; 工具循环需要 .tool_calls 以回填 role:tool,
     故在此返回完整消息对象。tools 非空时以 tools= 透传, 否则走纯文本路径。
+    ai_config 非空时用覆盖端点/密钥/模型(研报管线专用), 空字段逐项回退全局。
     """
-    ai_key = secrets_store.get_ai_key()
+    override = ai_config or AiEndpointOverride()
+    ai_key = override.api_key or secrets_store.get_ai_key()
     if not ai_key:
         raise RuntimeError("AI API Key 未配置, 请在设置页配置")
 
-    client = _openai_client(ai_key, timeout)
-    model = current_ai_model()
+    client = _openai_client(ai_key, timeout, base_url=override.base_url)
+    model = override.model or current_ai_model()
     req_messages = list(messages)
-    kwargs = _openai_kwargs(temperature=temperature, max_tokens=max_tokens, tools=tools)
+    kwargs = _openai_kwargs(temperature=temperature, max_tokens=max_tokens, tools=tools,
+                            response_format=response_format)
     while True:
         try:
             resp = await client.chat.completions.create(
@@ -669,13 +716,14 @@ async def _iter_openai_text(stream) -> AsyncIterator[str]:
         raise RuntimeError("AI 服务未返回正文内容; 请检查模型配置或稍后重试")
 
 
-def _openai_client(api_key: str, timeout: float):
+def _openai_client(api_key: str, timeout: float, *, base_url: str = ""):
     from openai import AsyncOpenAI
 
     user_agent = secrets_store.get_ai_config("ai_user_agent", "") or settings.ai_user_agent
     return AsyncOpenAI(
         api_key=api_key,
-        base_url=normalize_openai_base_url(secrets_store.get_ai_config("ai_base_url", settings.ai_base_url)),
+        base_url=normalize_openai_base_url(
+            base_url or secrets_store.get_ai_config("ai_base_url", settings.ai_base_url)),
         timeout=timeout,
         # SDK 层重试仅覆盖首包前的连接错误/超时/429/5xx, 此时尚未产出任何内容,
         # 重试安全; 首 chunk 之后的断流不在此列, 由上层协议报错处理。
@@ -773,6 +821,21 @@ def _is_thinking_body_rejected(exc: Exception) -> bool:
     )
 
 
+def _is_response_format_rejected(exc: Exception) -> bool:
+    """True if the upstream 400 表明 JSON 模式(response_format)不可用。
+
+    与 stock_ai 的 JSON_MODE_DISABLED 同语义: 端点不支持 JSON 模式时, 去掉
+    该参数重发一次, 严格性由分片层 JSON 校验 + 收敛重试兜底。错误里点名了
+    **其它**参数(如 model/messages)时不误删 —— 那不是 JSON 模式的问题。
+    """
+    if getattr(exc, "status_code", None) != 400:
+        return False
+    param = _openai_error_param(exc)
+    if param:
+        return param == "response_format"
+    return True
+
+
 def _openai_error_param(exc: Exception) -> str:
     body = getattr(exc, "body", None)
     if not isinstance(body, dict):
@@ -797,6 +860,11 @@ def _openai_retry_kwargs(exc: Exception, kwargs: dict) -> dict | None:
         # 重试; 报告若因此被推理挤占正文, 由 _iter_openai_text 显式报错。
         retry_kwargs.pop("extra_body")
         return retry_kwargs
+    if "response_format" in retry_kwargs and _is_response_format_rejected(exc):
+        # 端点不支持 JSON 模式(研报七分片用): 去参重发一次, 严格性由
+        # 分片层 JSON 校验 + 收敛重试兜底。
+        retry_kwargs.pop("response_format")
+        return retry_kwargs
     return None
 
 
@@ -811,6 +879,7 @@ def _openai_kwargs(
     base_url: str = "",
     prefer_final_answer: bool = False,
     tools: Sequence[dict] | None = None,
+    response_format: dict | None = None,
 ) -> dict:
     """Build OpenAI create() kwargs and map supported provider capabilities.
 
@@ -837,6 +906,8 @@ def _openai_kwargs(
         kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
     if tools:
         kwargs["tools"] = list(tools)
+    if response_format:
+        kwargs["response_format"] = response_format
     return kwargs
 
 

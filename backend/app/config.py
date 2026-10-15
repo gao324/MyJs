@@ -123,6 +123,12 @@ class Settings(BaseSettings):
     # DSA vendor 根目录(含 src/ 与 data_provider/); 本仓库不复制该目录, 未配置时
     # DSA 引擎报错并提示回退方式。机器绝对路径只放在 .env(不入库), 不写进代码。
     dsa_vendor_dir: str = ""
+    # 研报管线专用 AI 端点(留空逐项回退上面的 AI_*); 建议指向与 stock_ai 同款模型
+    # (ARK deepseek-v4.1-flash), 七分片对 JSON 遵从度与中文研报质量敏感。
+    report_ai_base_url: str = ""
+    report_ai_model: str = ""
+    # 七分片单片输出上限表的封顶值(最大 12000, 留足余量避免被钳制截断)。
+    report_ai_max_output_tokens: int = 16000
 
     # Server
     host: str = "0.0.0.0"
