@@ -31,6 +31,10 @@ export interface ActiveTask {
   savedReportId?: string
   doneAt?: number
   dismissed?: boolean
+  /** 深度研报引擎(done 事件携带): 报告 id / 新标签页链接 / 是否降级产出 */
+  reportId?: string
+  reportUrl?: string
+  degraded?: boolean
 }
 
 export interface HistoryReport {
@@ -209,12 +213,20 @@ async function runStream(id: string, symbol: string, _name: string, focus: strin
           patchTask(id, { phase: 'error', error: chunk.message ?? '分析失败' })
           return
         case 'done':
-          patchTask(id, { phase: 'done' })
+          patchTask(id, {
+            phase: 'done',
+            reportId: chunk.report_id,
+            reportUrl: chunk.report_url,
+            degraded: chunk.degraded,
+          })
           break
       }
     }
     const final = activeTasks.find(t => t.id === id)
     if (final && final.phase !== 'error') {
+      // 深度研报引擎: 报告本体已由后端落盘(stock_reports), 不再把进度文本
+      // 存成 markdown 历史报告(那会污染历史列表)。
+      if (final.reportId) return
       // 兜底:流正常结束但从未收到 delta(后端在生成内容前异常断流)→ 标记失败,避免卡死
       if (!final.content) {
         patchTask(id, { phase: 'error', error: '分析未返回内容(后端可能异常中断),请重试' })

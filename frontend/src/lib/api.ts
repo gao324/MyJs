@@ -3655,8 +3655,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/stock-analysis/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE' }),
 
   /**
-   * AI 个股分析(DSA 问股 agent)— 流式调用(NDJSON,与财务分析同协议)。
-   * meta 里额外带 levels(关键价位)供图表回放。
+   * AI 个股分析 — 流式调用(NDJSON,与财务分析同协议)。
+   * meta 里额外带 levels(关键价位)供图表回放;
+   * 研报引擎的 done 事件额外带 report_id / report_url / degraded。
    */
   async *stockAnalyzeStream(symbol: string, focus?: string): AsyncGenerator<{
     type: 'meta' | 'delta' | 'error' | 'done' | 'ping'
@@ -3666,6 +3667,9 @@ export const api = {
     close?: number | null
     content?: string
     message?: string
+    report_id?: string
+    report_url?: string
+    degraded?: boolean
   }> {
     const res = await fetch('/api/stock-analysis/analyze', {
       method: 'POST',

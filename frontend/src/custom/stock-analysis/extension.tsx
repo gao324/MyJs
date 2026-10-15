@@ -91,7 +91,7 @@ export function StockAnalysis() {
     <>
       <PageHeader
         title="个股分析"
-        subtitle="日 K · 关键价位 · DSA 问股 agent 分析"
+        subtitle="日 K · 关键价位 · 深度研报分析"
         right={
           <div className="flex items-center gap-2">
             <LastStockChip stock={lastStock} onSelect={onSelect} />
@@ -166,7 +166,7 @@ export function StockAnalysis() {
               <EmptyState
                 icon={LineChart}
                 title="选择一只股票开始分析"
-                hint="搜索代码或名称,查看日 K 与关键价位,并可让 DSA 问股 agent 结合行情与资讯做综合分析。"
+                hint="搜索代码或名称,查看日 K 与关键价位,并可生成深度研报做综合分析。"
               />
             ) : (
               <StockAnalysisBoard symbol={symbol} />

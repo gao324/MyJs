@@ -40,6 +40,10 @@ function getMeta(task: ActiveTask | HistoryReport | null) {
   if ('meta' in task) return task.meta
   return { summary: task.summary, close: task.close, levels: task.levels }
 }
+function getReport(task: ActiveTask | HistoryReport | null) {
+  if (!task || !('reportUrl' in task) || !task.reportUrl) return null
+  return { id: task.reportId, url: task.reportUrl, degraded: task.degraded }
+}
 
 export function StockAnalysisDialog({ task, mode, minimized }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -49,6 +53,7 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
   const phase = getPhase(task)
   const content = getContent(task)
   const meta = getMeta(task)
+  const report = getReport(task)
   const isHistory = mode === 'history'
   const isWorking = phase === 'loading' || phase === 'streaming'
   const open = !!task && !minimized
@@ -157,6 +162,24 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
 
           {/* 内容区 */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 min-h-[280px]">
+            {phase === 'done' && report?.url && (
+              <div className="mb-3 rounded-xl border border-sky-400/30 bg-sky-500/10 p-3">
+                <div className="flex items-center gap-2">
+                  <LineChart className="h-4 w-4 text-sky-300 shrink-0" />
+                  <span className="text-xs font-medium text-foreground">深度研报已生成</span>
+                  <a href={report.url} target="_blank" rel="noreferrer"
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25 transition-colors">
+                    打开报告
+                  </a>
+                </div>
+                {report.degraded && (
+                  <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-300/90">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>报告存在降级项（分片失败或数据缺失），部分章节完整性可能受影响。</span>
+                  </div>
+                )}
+              </div>
+            )}
             {phase === 'loading' && !content && (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <div className="relative">
@@ -165,8 +188,8 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
                   </div>
                   <Loader2 className="absolute -inset-1 h-12 w-12 text-sky-400/40 animate-spin" style={{ animationDuration: '3s' }} />
                 </div>
-                <div className="text-xs text-secondary">DSA 问股 agent 正在分析…</div>
-                <div className="text-[10px] text-muted">agent 自主调用行情 / 资讯工具,通常 1–3 分钟,请保持页面打开</div>
+                <div className="text-xs text-secondary">深度研报生成中…</div>
+                <div className="text-[10px] text-muted">数据采集 → 七分片分析 → 模板渲染,通常 3–8 分钟,请保持页面打开</div>
               </div>
             )}
 
@@ -242,7 +265,7 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
             <p className="mt-1.5 text-[10px] text-muted/50 leading-relaxed">
               {isHistory
                 ? '历史报告为静态记录;修改关注重点后将作为新任务重新生成。报告仅供参考,不构成投资建议。'
-                : '报告由本机 DSA 问股 agent 结合行情、资讯与项目内数据生成。报告仅供参考,不构成投资建议。'}
+                : '报告由个股分析引擎结合行情数据生成。报告仅供参考,不构成投资建议。'}
             </p>
           </div>
         </motion.div>
