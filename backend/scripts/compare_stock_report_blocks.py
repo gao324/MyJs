@@ -52,13 +52,14 @@ def main(argv: list[str] | None = None) -> int:
         left = _load_blocks(Path(args.stock_ai))
         right = _load_blocks(Path(args.ours))
     except ValueError as exc:
-        print(f"❌ {exc}")
+        # Windows GBK 控制台无法打印 emoji, 输出保持纯 ASCII
+        print(f"[ERROR] {exc}")
         return 2
     diffs = compare_blocks(left, right)
     if not diffs:
-        print("✅ 数据块一致")
+        print("[OK] 数据块一致")
         return 0
-    print("❌ 数据块差异:")
+    print("[DIFF] 数据块差异:")
     for line in diffs:
         print(f"  - {line}")
     return 1
