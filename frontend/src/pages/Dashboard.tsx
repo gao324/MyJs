@@ -19,6 +19,7 @@ import { AddWidgetPanel } from '@/components/dashboard/AddWidgetPanel'
 import { useDashboardLayout } from '@/components/dashboard/useDashboardLayout'
 import { DEFAULT_LAYOUT, widgetDef, type WidgetCtx } from '@/components/dashboard/registry'
 import { cloneItems, GRID_COLS, type WidgetType } from '@/components/dashboard/layout'
+import { useIsDesktop } from '@/lib/useMediaQuery'
 
 /** 打开个股预览的来源榜 (用于行高亮与切股导航列表) */
 type PreviewSource = 'gain' | 'loss' | 'amount' | 'active' | 'concept' | 'industry' | 'alert'
@@ -43,6 +44,8 @@ export function Dashboard() {
   const { items: dashItems, setItems: setDashItems } = useDashboardLayout()
   // 布局编辑态: 入口与控制组(添加组件/恢复默认/完成)在头部「重载」右侧
   const [dashEditing, setDashEditing] = useState(false)
+  // 手机端 DashboardGrid 不挂网格 (纵排), 拖拽/改宽高无从谈起 —— 头部只留「添加组件」
+  const isDesktop = useIsDesktop()
   const placedTypes = useMemo(() => new Set(dashItems.map(it => it.t)), [dashItems])
   const resetDashLayout = useCallback(() => {
     setDashItems(cloneItems(DEFAULT_LAYOUT))
@@ -274,7 +277,11 @@ export function Dashboard() {
           >
             <RefreshCw className={`h-3 w-3 ${manualFetching ? 'animate-spin' : ''}`} />重载
           </button>
-          {!dashEditing ? (
+          {!isDesktop ? (
+            /* 手机端: 网格未挂载, 「自定义布局」进去也拖不动, 点了等于没反应。
+               只保留「添加组件」—— 新增的组件会直接出现在纵排列表里。 */
+            <AddWidgetPanel placedTypes={placedTypes} onAdd={addDashWidget} />
+          ) : !dashEditing ? (
             <button
               onClick={() => setDashEditing(true)}
               title="拖拽调整组件位置与宽高"

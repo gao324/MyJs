@@ -33,7 +33,7 @@ from app.enriched_generation import (
     get_enriched_generation,
 )
 from app.market_time import cn_today
-from app.parquet import scan_enriched_parquet
+from app.parquet import scan_daily_parquet, scan_enriched_parquet, scan_parquet_compat
 from app.polars_guard import guarded_collect
 from app.services.minute_adjust import apply_minute_adjustment, minute_basis_is_raw
 
@@ -416,6 +416,9 @@ class KlineRepository:
         self._inst_glob = str(store.data_dir / "instruments" / "**" / "*.parquet")
         self._index_inst_glob = str(store.data_dir / "instruments_index" / "**" / "*.parquet")
         self._etf_inst_glob = str(store.data_dir / "instruments_etf" / "**" / "*.parquet")
+        # 不复权原始日K 与除权除息事件明细 (股息率等名义价格口径的数据源)
+        self._daily_glob = str(store.data_dir / "kline_daily" / "**" / "*.parquet")
+        self._adj_factor_glob = str(store.data_dir / "adj_factor" / "**" / "*.parquet")
 
     def execute_all(self, sql: str, params: list | None = None) -> list[tuple]:
         """线程安全的 SELECT → fetchall。DuckDB 单 connection 非线程安全，所有读路径须走此方法。"""
@@ -1574,6 +1577,74 @@ class KlineRepository:
 
         # 回退 scan_parquet
         return self._scan_daily_batch(symbols, start, end, columns)
+
+    def get_adj_factor_events(
+        self,
+        symbols: list[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """本地除权除息事件明细只读窄查 (adj_factor parquet)。
+
+        列: symbol, trade_date(除权日), ex_factor, dividend(每股税前现金分红),
+        bonus, allot, allot_price, prev_close。明细列由提供事件的数据源
+        (fuyao) 回填、可为 null — 调用方自行判空 (如 dividend > 0)。
+
+        symbols=None 表示全市场; start/end 过滤 trade_date (含端点);
+        表不存在或空库返回空 DataFrame, 不抛。
+        """
+        try:
+            lf = scan_parquet_compat(self._adj_factor_glob)
+            if symbols:
+                lf = lf.filter(pl.col("symbol").is_in(symbols))
+            if start is not None:
+                lf = lf.filter(pl.col("trade_date") >= start)
+            if end is not None:
+                lf = lf.filter(pl.col("trade_date") <= end)
+            # 稳定列序契约: 存量三列库缺明细列, 按存在的列取规范顺序
+            canonical = [
+                "symbol", "trade_date", "ex_factor",
+                "dividend", "bonus", "allot", "allot_price", "prev_close",
+            ]
+            names = lf.collect_schema().names()
+            lf = lf.select([c for c in canonical if c in names])
+            return guarded_collect(
+                lf.sort(["symbol", "trade_date"]), priority="background"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("除权事件查询失败: %s", e)
+            return pl.DataFrame()
+
+    def get_raw_daily_close(
+        self,
+        symbols: list[str] | None = None,
+        start: date | None = None,
+        end: date | None = None,
+    ) -> pl.DataFrame:
+        """日K不复权收盘价窄读 → [symbol, date, close]。
+
+        kline_daily 存储的 close 即不复权原始价 (CONTRIBUTING §3.2), 与
+        enriched 的前复权 close 口径不同。需要历史名义价格 (如股息率分母、
+        真实成交价) 的调用方必须走本方法, 不要复用 get_daily_batch —
+        后者在 300 天缓存命中路径返回的是前复权 close。
+
+        symbols=None 表示全市场; 表不存在或空库返回空 DataFrame, 不抛。
+        """
+        try:
+            lf = scan_daily_parquet(self._daily_glob)
+            if symbols:
+                lf = lf.filter(pl.col("symbol").is_in(symbols))
+            if start is not None:
+                lf = lf.filter(pl.col("date") >= start)
+            if end is not None:
+                lf = lf.filter(pl.col("date") <= end)
+            lf = lf.select("symbol", "date", "close")
+            return guarded_collect(
+                lf.sort(["symbol", "date"]), priority="background"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("日K不复权收盘查询失败: %s", e)
+            return pl.DataFrame()
 
     def get_index_daily(
         self,

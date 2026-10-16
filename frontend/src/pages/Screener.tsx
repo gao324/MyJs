@@ -26,8 +26,10 @@ import { StrategyPoolDialog } from '@/components/screener/StrategyPoolDialog'
 import { StrategyBuilderDialog } from '@/components/screener/StrategyBuilderDialog'
 import { StrategyStoreDialog } from '@/components/screener/StrategyStoreDialog'
 import { CompositeStrategyDialog } from '@/components/screener/CompositeStrategyDialog'
+import { ScreenerResultList } from '@/components/screener/ScreenerResultList'
 import { ListColumnCustomizer } from '@/components/ListColumnCustomizer'
 import { useTableSort } from '@/components/stock-table/useTableSort'
+import { useIsDesktop } from '@/lib/useMediaQuery'
 import { resolveCandleConfig } from '@/lib/list-columns'
 import {
   SCREENER_BUILTIN_COLUMNS,
@@ -103,6 +105,9 @@ export function Screener() {
   const runAllDateRef = useRef<string | null>(null)
   const minuteRunDateRef = useRef<string | null>(null)
   const qc = useQueryClient()
+
+  // 手机端 (<768px): 结果走清单 + 跳外部 App, 表格 / 列配置 / 创建编辑入口一律不出现
+  const isDesktop = useIsDesktop()
 
   // 结果列配置 — 默认内置列，异步合并后端/localStorage 偏好
   const [columns, setColumns] = useState<ColumnConfig[]>([...SCREENER_BUILTIN_COLUMNS])
@@ -781,6 +786,19 @@ export function Screener() {
   }
 
 
+  // 筛选面板元素提到此处: 桌面端内联展开, 手机端放进底部弹出层 (同一份 props)
+  const filterPanel = (
+    <FilterPanel
+      value={filter}
+      onChange={setFilter}
+      onClose={() => setShowFilter(false)}
+      onReset={() => {
+        setFilter(defaultFilter)
+        if (activeStrategy) filterMap.current.delete(activeStrategy)
+      }}
+    />
+  )
+
   return (
     <>
       <PageHeader
@@ -863,22 +881,24 @@ export function Screener() {
             >
               <Network className="h-3.5 w-3.5" />
             </button>
-            {/* 卡片尺寸切换 */}
-            <div className="flex items-center h-7 rounded-btn border border-border overflow-hidden">
-              {(['hidden', 'mini', 'normal', 'large'] as const).map(sz => (
-                <button
-                  key={sz}
-                  onClick={() => { setCardSize(sz); storage.screenerCardSize.set(sz) }}
-                  className={`h-full px-2 text-[10px] font-medium transition-colors cursor-pointer
-                    ${cardSize === sz
-                      ? 'bg-accent/10 text-accent'
-                      : 'text-muted hover:text-secondary hover:bg-elevated'
-                    }`}
-                >
-                  {sz === 'hidden' ? '隐藏' : sz === 'mini' ? '紧凑' : sz === 'normal' ? '标准' : '详细'}
-                </button>
-              ))}
-            </div>
+            {/* 卡片尺寸切换 — 只影响桌面端策略卡片密度 */}
+            {isDesktop && (
+              <div className="flex items-center h-7 rounded-btn border border-border overflow-hidden">
+                {(['hidden', 'mini', 'normal', 'large'] as const).map(sz => (
+                  <button
+                    key={sz}
+                    onClick={() => { setCardSize(sz); storage.screenerCardSize.set(sz) }}
+                    className={`h-full px-2 text-[10px] font-medium transition-colors cursor-pointer
+                      ${cardSize === sz
+                        ? 'bg-accent/10 text-accent'
+                        : 'text-muted hover:text-secondary hover:bg-elevated'
+                      }`}
+                  >
+                    {sz === 'hidden' ? '隐藏' : sz === 'mini' ? '紧凑' : sz === 'normal' ? '标准' : '详细'}
+                  </button>
+                ))}
+              </div>
+            )}
             {/* 策略池按钮 */}
             <button
               onClick={() => setShowPoolDialog(true)}
@@ -892,48 +912,51 @@ export function Screener() {
                 {visiblePool.length}/{strategyPresets.length}
               </span>
             </button>
-            {/* 创建叠加策略 */}
-            <button
-              onClick={() => setShowComposite(true)}
-              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
-                text-xs font-medium text-teal-400 border border-teal-500/20 bg-teal-500/5
-                hover:bg-teal-500/15 transition-colors cursor-pointer"
-            >
-              <Layers className="h-3.5 w-3.5" />
-              叠加策略
-            </button>
-            {/* 创建策略 */}
-            <button
-              onClick={() => { setBuilderMode('create'); setShowBuilder(true) }}
-              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
-                text-xs font-medium text-amber-400 border border-amber-400/20 bg-amber-400/5
-                hover:bg-amber-400/15 transition-colors cursor-pointer"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              创建策略 · AI
-            </button>
-            {/* 获取策略（占位，敬请期待）— 暂时隐藏 */}
-            {SHOW_STRATEGY_STORE && (
-              <button
-                onClick={() => setShowStore(true)}
-                className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
-                  border border-border bg-surface text-xs font-medium text-secondary
-                  hover:text-accent hover:border-accent/50 transition-colors cursor-pointer"
-              >
-                <Store className="h-3.5 w-3.5" />
-                获取策略
-              </button>
+            {/* 创建叠加策略 / 创建策略 / 默认基础参数 — 手机端只看不配, 策略在电脑上配好 */}
+            {isDesktop && (
+              <>
+                <button
+                  onClick={() => setShowComposite(true)}
+                  className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
+                    text-xs font-medium text-teal-400 border border-teal-500/20 bg-teal-500/5
+                    hover:bg-teal-500/15 transition-colors cursor-pointer"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  叠加策略
+                </button>
+                <button
+                  onClick={() => { setBuilderMode('create'); setShowBuilder(true) }}
+                  className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
+                    text-xs font-medium text-amber-400 border border-amber-400/20 bg-amber-400/5
+                    hover:bg-amber-400/15 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  创建策略 · AI
+                </button>
+                {/* 获取策略（占位，敬请期待）— 暂时隐藏 */}
+                {SHOW_STRATEGY_STORE && (
+                  <button
+                    onClick={() => setShowStore(true)}
+                    className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn
+                      border border-border bg-surface text-xs font-medium text-secondary
+                      hover:text-accent hover:border-accent/50 transition-colors cursor-pointer"
+                  >
+                    <Store className="h-3.5 w-3.5" />
+                    获取策略
+                  </button>
+                )}
+                {/* 默认基础参数: 之后新建策略默认使用的基础过滤配置 */}
+                <button
+                  onClick={() => setShowDefaultParams(true)}
+                  title="默认基础参数 — 新建策略默认使用的基础过滤配置"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-btn
+                    border border-border bg-surface text-muted
+                    hover:text-accent hover:border-accent/50 transition-colors cursor-pointer"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </>
             )}
-            {/* 默认基础参数: 之后新建策略默认使用的基础过滤配置 */}
-            <button
-              onClick={() => setShowDefaultParams(true)}
-              title="默认基础参数 — 新建策略默认使用的基础过滤配置"
-              className="inline-flex items-center justify-center h-7 w-7 rounded-btn
-                border border-border bg-surface text-muted
-                hover:text-accent hover:border-accent/50 transition-colors cursor-pointer"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-            </button>
           </div>
         }
       />
@@ -1028,8 +1051,10 @@ export function Screener() {
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="space-y-3"
             >
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
+              {/* 手机端: 标题与按钮改为上下两行 —— 并排时 h2 作为 flex 容器会被压窄,
+                  里面的文字节点被逐字换行 ("命 中" / "筛 选") */}
+              <div className="flex items-center justify-between max-md:flex-col max-md:items-stretch max-md:gap-2">
+                <h2 className="text-sm font-medium text-foreground flex flex-wrap items-center gap-2">
                   {!showAll && activeStrategy && (
                     <span className="text-secondary">{strategyIdToName[activeStrategy] ?? ''}</span>
                   )}
@@ -1038,7 +1063,8 @@ export function Screener() {
                   {filterActive(filter) && displayRows.length !== (showAll ? allRows.length : result!.total) && (
                     <span className="text-muted text-xs">/ {showAll ? allRows.length : result!.total}</span>
                   )}
-                  <span className="text-[11px] text-muted font-normal">
+                  {/* 池内策略数与合计只数是次要信息, 手机端隐藏以省出宽度 */}
+                  <span className="text-[11px] text-muted font-normal max-md:hidden">
                     · {displayPool.length} 策略
                     {!showAll && displayPool.length > 0 && (
                       <> · 共 {displayPool.reduce((sum, id) => sum + (hitCounts[id] ?? 0), 0)} 只</>
@@ -1048,12 +1074,12 @@ export function Screener() {
                     <span className="text-[11px] text-muted animate-pulse">扫描中…</span>
                   )}
                 </h2>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 max-md:w-full max-md:justify-end">
                   {(showAll ? allRows.length > 0 : !!result?.rows.length) && (
                     <div className="inline-flex items-stretch h-7 rounded-btn border border-border bg-surface overflow-hidden">
                       <button
                         onClick={() => setShowFilter(v => !v)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 text-xs font-medium transition-colors duration-150 cursor-pointer
+                        className={`inline-flex items-center gap-1.5 px-2.5 whitespace-nowrap text-xs font-medium transition-colors duration-150 cursor-pointer
                           ${filterActive(filter)
                             ? 'bg-accent/15 text-accent'
                             : showFilter
@@ -1095,24 +1121,27 @@ export function Screener() {
                       title="批量加自选"
                       ariaLabel="批量加入自选"
                       triggerClassName="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-btn
-                        border border-accent/40 bg-accent/10 text-accent text-xs font-medium
+                        whitespace-nowrap border border-accent/40 bg-accent/10 text-accent text-xs font-medium
                         hover:bg-accent/20 disabled:opacity-50 transition-colors duration-150 cursor-pointer"
                     >
                       <Star className="h-3 w-3" />
                       {batchAdd.isPending ? '添加中…' : '批量加自选'}
                     </WatchlistAddMenu>
                   )}
-                  <button
-                    onClick={() => setCustomizerOpen(true)}
-                    title="列表配置"
-                    className={`inline-flex items-center justify-center h-7 w-7 rounded-btn border text-xs font-medium transition-colors cursor-pointer
-                      ${customizerOpen
-                        ? 'border-accent/50 bg-accent/10 text-accent'
-                        : 'border-border bg-surface text-secondary hover:text-accent hover:border-accent/50'
-                      }`}
-                  >
-                    <Settings2 className="h-3 w-3" />
-                  </button>
+                  {/* 列表配置: 手机端无表格, 列配置无从谈起 */}
+                  {isDesktop && (
+                    <button
+                      onClick={() => setCustomizerOpen(true)}
+                      title="列表配置"
+                      className={`inline-flex items-center justify-center h-7 w-7 rounded-btn border text-xs font-medium transition-colors cursor-pointer
+                        ${customizerOpen
+                          ? 'border-accent/50 bg-accent/10 text-accent'
+                          : 'border-border bg-surface text-secondary hover:text-accent hover:border-accent/50'
+                        }`}
+                    >
+                      <Settings2 className="h-3 w-3" />
+                    </button>
+                  )}
                   {batchMsg && (
                     <span className="text-xs text-accent animate-pulse">{batchMsg}</span>
                   )}
@@ -1141,15 +1170,20 @@ export function Screener() {
 
               {/* 筛选面板: 只要原始结果有数据就显示 (哪怕筛完后为空, 用户才能改条件) */}
               {showFilter && (showAll ? allRows.length > 0 : !!result?.rows.length) && (
-                <FilterPanel
-                  value={filter}
-                  onChange={setFilter}
-                  onClose={() => setShowFilter(false)}
-                  onReset={() => {
-                    setFilter(defaultFilter)
-                    if (activeStrategy) filterMap.current.delete(activeStrategy)
-                  }}
-                />
+                isDesktop ? filterPanel : (
+                  /* 手机端: 12 组条件内联展开会把结果挤出屏幕, 改底部弹出层 */
+                  <div
+                    className="fixed inset-0 z-50 flex items-end bg-black/50"
+                    onClick={() => setShowFilter(false)}
+                  >
+                    <div
+                      className="w-full max-h-[85vh] overflow-y-auto rounded-t-2xl bg-base"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {filterPanel}
+                    </div>
+                  </div>
+                )
               )}
 
               {displayRows.length === 0 ? (
@@ -1160,6 +1194,9 @@ export function Screener() {
                     ? '当前筛选条件过严, 试试放宽或重置筛选。'
                     : '可能数据未跑盘后管道,或策略条件过于严苛。试试 POST /api/pipeline/run。'}
                 />
+              ) : !isDesktop ? (
+                /* 手机端: 不做宽表格, 一行一票整行点跳外部行情 App */
+                <ScreenerResultList rows={displayRows} />
               ) : (
                 <>
                   <ScreenerTable
@@ -1203,7 +1240,12 @@ export function Screener() {
                 {pool.length === 0 ? (
                   <>
                     <span className="text-sm text-secondary">还没有策略，先添加或创建一个</span>
-                    <span className="text-[11px] text-muted">用右上角「创建策略 · AI」生成，或按上方文档手写</span>
+                    {/* 手机端隐藏了创建入口, 不能再指向它 */}
+                    <span className="text-[11px] text-muted">
+                      {isDesktop
+                        ? '用右上角「创建策略 · AI」生成，或按上方文档手写'
+                        : '请先在电脑端「策略」页创建策略，或点击下方「策略池」添加'}
+                    </span>
                   </>
                 ) : (
                   <>
@@ -1221,28 +1263,30 @@ export function Screener() {
         columns={columns}
         groups={SCREENER_COLUMN_GROUPS}
         onChange={handleColumnsChange}
-        open={customizerOpen}
+        open={isDesktop && customizerOpen}
         onClose={() => setCustomizerOpen(false)}
         title="自定义策略结果列"
         builtinSectionLabel="策略内置列"
         extColumnAlign="center"
       />
 
+      {/* 手机端整行直接跳外部 App, 不开个股详情弹窗 */}
       <StockPreviewDialog
-        symbol={previewSymbol}
+        symbol={isDesktop ? previewSymbol : null}
         name={previewName}
         onClose={closePreview}
         navList={previewNavList}
         onNavigate={(sym, n) => { setPreviewSymbol(sym); setPreviewName(n ?? '') }}
       />
 
+      {/* 创建 / 编辑 / 参数三类对话框: 手机端只看不配 (入口已隐藏, 这里再兜一层) */}
       <DefaultStrategyParamsDialog
-        show={showDefaultParams}
+        show={isDesktop && showDefaultParams}
         onClose={() => setShowDefaultParams(false)}
       />
 
       <StrategySettingsDialog
-        strategyId={settingsStrategyId}
+        strategyId={isDesktop ? settingsStrategyId : null}
         onClose={() => setSettingsStrategyId(null)}
         onSaved={(limit) => {
           if (settingsStrategyId) {
@@ -1300,7 +1344,7 @@ export function Screener() {
         />
       )}
       <StrategyBuilderDialog
-        open={showBuilder}
+        open={isDesktop && showBuilder}
         onClose={() => setShowBuilder(false)}
         mode={builderMode}
         existingStrategyIds={allStrategyIds}
@@ -1324,7 +1368,7 @@ export function Screener() {
       />
 
       <CompositeStrategyDialog
-        open={showComposite}
+        open={isDesktop && showComposite}
         onClose={() => setShowComposite(false)}
         onSavedId={async id => {
           const data = await qc.fetchQuery({ queryKey: QK.screenerStrategies('all'), queryFn: () => api.screenerStrategies(), staleTime: 0 })

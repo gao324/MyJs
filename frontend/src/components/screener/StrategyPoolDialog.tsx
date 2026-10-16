@@ -194,7 +194,7 @@ export function StrategyPoolDialog({ pool, onConfirm, onClose }: Props) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
           transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-          className="w-[680px] max-h-[78vh] bg-surface border border-border rounded-card shadow-xl flex flex-col"
+          className="w-[680px] max-w-[calc(100vw-1rem)] max-h-[78vh] max-md:max-h-[92vh] bg-surface border border-border rounded-card shadow-xl flex flex-col"
         >
           {/* 标题 */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
@@ -238,9 +238,9 @@ export function StrategyPoolDialog({ pool, onConfirm, onClose }: Props) {
               <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
             </div>
           ) : (
-            <div className="flex-1 min-h-0 grid grid-cols-2 gap-0">
+            <div className="flex-1 min-h-0 grid grid-cols-2 max-md:grid-cols-1 max-md:grid-rows-2 gap-0">
               {/* 左侧: 待选 (Tab 分组) */}
-              <div className="flex flex-col min-h-0 border-r border-border">
+              <div className="flex flex-col min-h-0 border-r border-border max-md:border-r-0 max-md:border-b">
                 <div className="flex items-center gap-0.5 px-3 py-2 border-b border-border/60 shrink-0">
                   {TABS.map(tab => {
                     const count = tab.id === 'all'

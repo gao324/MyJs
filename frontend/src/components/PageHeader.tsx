@@ -14,6 +14,9 @@ export function PageHeader({ title, subtitle, titleExtra, right, className }: Pr
     <header
       className={cn(
         'px-5 pt-3 pb-2 border-b border-border flex items-center justify-between gap-4',
+        /* 手机端右侧工具栏 (筛选/日期/按钮组) 会折成多行, 与标题抢宽度时标题被压到只剩
+           几个字。改成标题独占一行、工具栏另起一行, 两边都不再互相挤压。 */
+        'max-md:flex-col max-md:items-stretch max-md:gap-2',
         className,
       )}
     >

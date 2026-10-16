@@ -11,6 +11,7 @@ import { fmtPct, cnDateFromUtc } from '@/lib/format'
 import { StockPanel, getDefaultRange } from '@/components/StockPanel'
 import { NavPager, NavWrapToast } from '@/components/NavPager'
 import { WatchlistAddMenu } from '@/components/WatchlistAddMenu'
+import { StockExternalLinkButton } from '@/components/StockExternalLinkButton'
 import { StockMultiDayIntradayChart } from '@/components/StockMultiDayIntradayChart'
 import { DatePicker } from '@/components/DatePicker'
 import { RuleEditor } from '@/components/monitor/RuleEditor'
@@ -417,6 +418,9 @@ export function StockPreviewDialogContent({ symbol, name, onClose, triggerInfo, 
                 >
                   <RadioTower className="h-4 w-4" />
                 </button>
+
+                {/* 在外部行情 App 中打开 (通达信 / 同花顺, 设置里二选一; 未配置则不渲染) */}
+                <StockExternalLinkButton symbol={symbol} />
 
                 {/* 刷新 */}
                 <button

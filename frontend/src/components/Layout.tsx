@@ -92,6 +92,9 @@ const nav = [
   { to: '/data',             label: '数据',     icon: IconData },
 ] as const
 
+/** 手机端 (<768px) 抽屉里的全部页面 —— 首批只做这四个功能 */
+const MOBILE_NAV_PATHS = ['/', '/screener', '/lots', '/review'] as const
+
 /** 亮/暗主题切换 — 状态存 localStorage, 生效见 lib/theme.ts */
 function ThemeToggle() {
   const theme = useTheme()
@@ -610,7 +613,13 @@ export function Layout() {
     : [...allNav].sort((a, b) => compareByDefaultNav(a.to, b.to))
 
   const hiddenIds = new Set(prefs?.nav_hidden ?? [])
-  const visibleNavItems = navItems.filter(n => !hiddenIds.has(n.to) && !hiddenIds.has(n.to.replace(/^\/analysis\//, '')))
+  const visibleNavItems = (isDesktop
+    ? navItems
+    /* 手机端只保留首批四个功能页 (看板 / 策略 / 持仓提醒 / 复盘)。
+       其余桌面页不进抽屉 —— 全量 19 项在手机上没法用。
+       这里不过 nav_hidden: 这四个是该端的全部功能, 缺一个就没得用了。 */
+    : navItems.filter(n => (MOBILE_NAV_PATHS as readonly string[]).includes(n.to))
+  ).filter(n => !hiddenIds.has(n.to) && !hiddenIds.has(n.to.replace(/^\/analysis\//, '')))
 
   // 新装用户一次性种子: 扩展域页面默认隐藏, 菜单设置里可逐个开启。
   // 老用户 (升级前已完成 onboarding) 只写标记不动偏好, 升级前后侧栏一致。
@@ -844,7 +853,9 @@ export function Layout() {
                         {!railMode && (
                           <span className="flex min-w-0 flex-1 items-center gap-1.5">
                             <span className="truncate">{label}</span>
-                            {arch === 'ext' && (
+                            {/* ext 标记是给桌面端看清页面归属的架构提示; 手机端抽屉只有四个
+                                功能页, 这个标记既无对照对象又占宽度, 直接不显示 */}
+                            {arch === 'ext' && isDesktop && (
                               <span
                                 title="扩展域页面 — 可整体替换/移除而不伤核心"
                                 className="shrink-0 font-mono text-[8px] font-medium uppercase leading-none tracking-[0.08em] text-muted/70"
@@ -1117,7 +1128,9 @@ export function Layout() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="h-full overflow-auto scrollbar-gutter-stable max-md:pt-12"
+        /* max-md:pt-12 给顶部的悬浮菜单按钮让位; max-md:pb-20 给右下角 AI 悬浮球让位 ——
+           手机端这两处都浮在内容之上, 不留空间的话最后一行永远被盖住。 */
+        className="h-full overflow-auto scrollbar-gutter-stable max-md:pt-12 max-md:pb-20"
       >
         {streamStatus === 'reconnecting' && (
           <div

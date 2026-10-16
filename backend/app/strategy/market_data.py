@@ -66,6 +66,16 @@ def _validate_symbol(symbol: Any) -> bool:
     return isinstance(symbol, str) and bool(symbol.strip())
 
 
+def _norm_symbols(symbols: Any) -> list[str] | None:
+    """symbols 规范化: None 表示全市场; 非法/空元素过滤, 全空视为 None。"""
+    if symbols is None:
+        return None
+    if isinstance(symbols, str):
+        return [symbols] if _validate_symbol(symbols) else None
+    cleaned = [s for s in symbols if _validate_symbol(s)]
+    return cleaned or None
+
+
 # ── 公开只读 API ───────────────────────────────────────
 def get_index_daily(symbol, start=None, end=None, columns=None):
     """读取指数日K(含技术指标)。未知 symbol / 无数据返回空 DataFrame。"""
@@ -115,6 +125,47 @@ def get_daily(symbol, start=None, end=None, columns=None):
         return repo.get_daily(symbol, s, e, columns)
     except Exception as exc:
         logger.warning("market_data get_daily failed %s: %s", symbol, exc)
+        return pl.DataFrame()
+
+
+def get_dividend_events(symbols=None, start=None, end=None):
+    """读取本地除权除息事件明细 (含每股税前现金分红)。
+
+    返回列: symbol, trade_date(除权日), ex_factor, dividend, bonus, allot,
+    allot_price, prev_close。明细列由提供事件的数据源回填, 可为 null —
+    调用方自行判空 (如 dividend > 0)。symbols=None 表示全市场;
+    未传 end 时窗口右端默认北京今天 (§3.3)。无数据/失败返回空 DataFrame。
+
+    供自定义策略计算股息率一类的历史分红口径使用; 事件表覆盖范围取决于
+    本地已回补的除权数据 (数据页「向前扩展历史」)。
+    """
+    s = _norm_date(start, _FULL_START)
+    e = _norm_date(end, cn_today())
+    try:
+        return _get_repo().get_adj_factor_events(
+            symbols=_norm_symbols(symbols), start=s, end=e
+        )
+    except Exception as exc:  # noqa: BLE001 — 只读数据入口, 失败按空数据降级由调用方 fail-closed
+        logger.warning("market_data get_dividend_events failed: %s", exc)
+        return pl.DataFrame()
+
+
+def get_raw_daily_close(symbols=None, start=None, end=None):
+    """读取日K不复权收盘价 → [symbol, date, close]。
+
+    kline_daily 的 close 为不复权原始价, 与 enriched 的前复权 close 口径不同;
+    计算股息率分母、真实成交价等名义价格口径时必须用本函数。
+    symbols=None 表示全市场; 未传 end 时窗口右端默认北京今天 (§3.3)。
+    无数据/失败返回空 DataFrame。
+    """
+    s = _norm_date(start, _FULL_START)
+    e = _norm_date(end, cn_today())
+    try:
+        return _get_repo().get_raw_daily_close(
+            symbols=_norm_symbols(symbols), start=s, end=e
+        )
+    except Exception as exc:  # noqa: BLE001 — 同上: 空数据降级, 不掩盖真实口径错误
+        logger.warning("market_data get_raw_daily_close failed: %s", exc)
         return pl.DataFrame()
 
 

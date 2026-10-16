@@ -12,6 +12,7 @@ import { DatePicker } from '@/components/DatePicker'
 import { DateShortcuts } from '@/components/DateShortcuts'
 import { StockPreviewDialog } from '@/components/StockPreviewDialog'
 import { toNavItems } from '@/lib/listNav'
+import { useIsDesktop } from '@/lib/useMediaQuery'
 import { boardTag } from '@/components/stock-table/primitives'
 import type { FrontendExtension } from '@/extensions/types'
 import { IconLots } from '@/components/BrandIcons'
@@ -46,12 +47,124 @@ function CostPnL({ close, cost }: { close?: number; cost: number }) {
   return <span className={cn('font-mono', priceColorClass(pnl))}>{fmtPct(pnl)}</span>
 }
 
+/** 编辑 + 删除 (删除需二次确认) — 表格行与手机卡片共用同一份交互 */
+function LotActions({ lot, confirmId, onEdit, onDelete }: {
+  lot: Lot
+  confirmId: string | null
+  onEdit: (l: Lot) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <div className="flex items-center justify-end gap-0.5">
+      <button
+        onClick={() => onEdit(lot)}
+        title="编辑"
+        className="p-1.5 rounded-md text-secondary transition-all hover:bg-accent/10 hover:text-accent cursor-pointer"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      {confirmId === lot.id ? (
+        <button
+          onClick={() => onDelete(lot.id)}
+          title="再次点击确认删除"
+          className="inline-flex items-center gap-1 rounded-md bg-danger/15 px-1.5 py-0.5 text-[9px] font-medium text-danger border border-danger/30 animate-pulse cursor-pointer"
+        >
+          <Trash2 className="h-2.5 w-2.5" />确认
+        </button>
+      ) : (
+        <button
+          onClick={() => onDelete(lot.id)}
+          title="删除 (同步删除生成的监控规则)"
+          className="p-1.5 rounded-md text-secondary transition-all hover:bg-danger/10 hover:text-danger cursor-pointer"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 手机端 (<768px) 的批次卡片 —— 替代 11 列宽表。
+ * 宽表在 375px 下只能看到前 5 列, 其余要靠横向滚动; 卡片按「标的身价 / 成本现价 /
+ * 止盈止损 / 到期与操作」四行重排, 字段一个不少。
+ */
+function LotCard({ lot, lastPrice, name, confirmId, onEdit, onDelete, onPreview }: {
+  lot: Lot
+  lastPrice?: number
+  name?: string
+  confirmId: string | null
+  onEdit: (l: Lot) => void
+  onDelete: (id: string) => void
+  onPreview: (symbol: string) => void
+}) {
+  const board = boardTag(lot.symbol)
+  return (
+    <div className="border-b border-border/40 px-3 py-3 last:border-0">
+      {/* 标的 + 盈亏% */}
+      <div className="flex items-start justify-between gap-2">
+        <button
+          onClick={() => onPreview(lot.symbol)}
+          title={`查看 ${lot.symbol} 日K`}
+          className="flex min-w-0 items-center gap-1.5 rounded px-0.5 py-0.5 text-left transition-colors hover:bg-elevated/50 cursor-pointer"
+        >
+          <span className="font-mono font-medium text-foreground">{lot.symbol}</span>
+          {board && (
+            <span className={`inline-flex items-center justify-center rounded border px-1 text-[9px] font-bold leading-tight ${board.color}`}>
+              {board.label}
+            </span>
+          )}
+          {name && <span className="truncate text-secondary">{name}</span>}
+        </button>
+        <span className="shrink-0 text-sm font-medium tabular-nums">
+          <CostPnL close={lastPrice} cost={lot.cost_price} />
+        </span>
+      </div>
+
+      {/* 数量 / 成本 / 现价 */}
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px] text-muted">
+        <span>{lot.qty} 股</span>
+        <span>成本 {lot.cost_price}</span>
+        <span>现价 {lastPrice != null ? fmtPrice(lastPrice) : '—'}</span>
+      </div>
+
+      {/* 止盈 / 止损 / 买入日期 */}
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[11px]">
+        <span className="text-bull">止盈 {lot.target_pct > 0 ? `${lot.target_pct}%` : '—'}</span>
+        <span className="text-bear">止损 {lot.stop_pct > 0 ? `${lot.stop_pct}%` : '—'}</span>
+        <span className="text-muted">买入 {lot.buy_date || '—'}</span>
+      </div>
+
+      {/* 到期提醒 + 剩余天数 + 操作 */}
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px]">
+          {lot.remind_date ? (
+            <>
+              <span className="inline-flex items-center gap-1 text-rose-400">
+                <CalendarClock className="h-3 w-3" />
+                {lot.remind_date}
+              </span>
+              <RemainingDays remind={lot.remind_date} />
+              {lot.lead_days > 0 && <span className="text-muted">· 提前{lot.lead_days}天</span>}
+            </>
+          ) : (
+            <span className="text-muted/60">未设到期提醒</span>
+          )}
+        </span>
+        <LotActions lot={lot} confirmId={confirmId} onEdit={onEdit} onDelete={onDelete} />
+      </div>
+    </div>
+  )
+}
+
 export function Lots() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<Lot | null>(null) // null=关闭
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [previewSymbol, setPreviewSymbol] = useState<string | null>(null)
+  // 手机端: 11 列宽表改卡片, 见 LotCard
+  const isDesktop = useIsDesktop()
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const lotsQuery = useQuery({ queryKey: QK.lots, queryFn: api.lotsList })
@@ -146,6 +259,20 @@ export function Lots() {
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-border bg-surface/40 shadow-sm">
+              {/* 手机端不出表格: 11 列在 375px 下只看得见前 5 列, 其余要靠横向滚动 */}
+              {!isDesktop && sortedLots.map(lot => (
+                <LotCard
+                  key={lot.id}
+                  lot={lot}
+                  lastPrice={lastPrices[lot.symbol]}
+                  name={symbolNames[lot.symbol]}
+                  confirmId={confirmId}
+                  onEdit={setEditing}
+                  onDelete={handleClickDelete}
+                  onPreview={setPreviewSymbol}
+                />
+              ))}
+              {isDesktop && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
@@ -195,38 +322,19 @@ export function Lots() {
                           ) : <span className="text-muted/60">—</span>}
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button
-                              onClick={() => setEditing(lot)}
-                              title="编辑"
-                              className="p-1.5 rounded-md text-secondary transition-all hover:bg-accent/10 hover:text-accent cursor-pointer"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            {confirmId === lot.id ? (
-                              <button
-                                onClick={() => handleClickDelete(lot.id)}
-                                title="再次点击确认删除"
-                                className="inline-flex items-center gap-1 rounded-md bg-danger/15 px-1.5 py-0.5 text-[9px] font-medium text-danger border border-danger/30 animate-pulse cursor-pointer"
-                              >
-                                <Trash2 className="h-2.5 w-2.5" />确认
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleClickDelete(lot.id)}
-                                title="删除 (同步删除生成的监控规则)"
-                                className="p-1.5 rounded-md text-secondary transition-all hover:bg-danger/10 hover:text-danger cursor-pointer"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
+                          <LotActions
+                            lot={lot}
+                            confirmId={confirmId}
+                            onEdit={setEditing}
+                            onDelete={handleClickDelete}
+                          />
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 

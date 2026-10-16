@@ -16,7 +16,21 @@ import { SOUND_OPTIONS, previewSound } from '@/lib/notificationSound'
 import {
   listZhVoices, previewVoice, activateVoice, getCurrentVoiceURI,
 } from '@/lib/voiceBroadcast'
-import { loadStockExternalTemplate, saveStockExternalTemplate } from '@/lib/stock-external-link'
+import {
+  loadStockExternalConfig,
+  saveStockExternalConfig,
+  isTemplateSchemeAllowed,
+  EXTERNAL_TARGETS,
+  EXTERNAL_TARGET_LABELS,
+  type ExternalTarget,
+  type StockExternalConfig,
+} from '@/lib/stock-external-link'
+
+/** 外链配置的局部更新 (只改目标 / 只改某一个目标的模板) */
+type ExtCfgPatch = {
+  target?: ExternalTarget
+  templates?: Partial<Record<ExternalTarget, string>>
+}
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getPageZoom, setPageZoom } from '@/lib/pageZoom'
 
 export function SettingsSystemPanel() {
@@ -25,8 +39,20 @@ export function SettingsSystemPanel() {
   const [saving, setSaving] = useState(false)
 
   const screenerAutoRun = prefs?.screener_auto_run ?? true
-  const [extTpl, setExtTpl] = useState(() => loadStockExternalTemplate())
+  const [extCfg, setExtCfg] = useState(() => loadStockExternalConfig())
   const [clearing, setClearing] = useState(false)
+
+  // 外链配置改动即时落盘 (与旧版单模板输入框同款行为)
+  const updateExtCfg = useCallback((patch: ExtCfgPatch) => {
+    setExtCfg(prev => {
+      const next: StockExternalConfig = {
+        target: patch.target ?? prev.target,
+        templates: { ...prev.templates, ...patch.templates },
+      }
+      saveStockExternalConfig(next)
+      return next
+    })
+  }, [])
 
   // ===== 界面缩放 (桌面客户端无浏览器缩放快捷键, CSS zoom 作用于 <html>) =====
   const [pageZoom, setPageZoomState] = useState(() => getPageZoom())
@@ -306,20 +332,49 @@ export function SettingsSystemPanel() {
 
         <div className="flex items-center justify-between gap-4 py-2">
           <div className="min-w-0">
-            <div className="text-sm text-foreground">详情页 URL 模板</div>
-            <div className="text-[11px] text-muted truncate">{"支持 {code} {market} {symbol} · 留空关闭外链"}</div>
+            <div className="text-sm text-foreground">目标 App</div>
+            <div className="text-[11px] text-muted">个股详情页的跳转目标, 二选一</div>
+          </div>
+          <div className="flex items-center h-8 shrink-0 rounded-btn border border-border overflow-hidden">
+            {EXTERNAL_TARGETS.map(t => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => updateExtCfg({ target: t })}
+                className={`px-3 h-full text-xs transition-colors cursor-pointer ${
+                  extCfg.target === t
+                    ? 'bg-accent/15 text-accent font-medium'
+                    : 'text-secondary hover:bg-elevated hover:text-foreground'
+                }`}
+              >
+                {EXTERNAL_TARGET_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 py-2">
+          <div className="min-w-0">
+            <div className="text-sm text-foreground">{EXTERNAL_TARGET_LABELS[extCfg.target]} URL 模板</div>
+            <div className="text-[11px] text-muted truncate">
+              {'支持 {code} {market} {symbol} · 留空关闭外链'}
+            </div>
           </div>
           <input
-            value={extTpl}
-            onChange={(e) => {
-              setExtTpl(e.target.value)
-              saveStockExternalTemplate(e.target.value)
-            }}
-            placeholder="https://..."
+            value={extCfg.templates[extCfg.target]}
+            onChange={(e) => updateExtCfg({ templates: { [extCfg.target]: e.target.value } })}
+            placeholder={`${extCfg.target}://... 或 https://...`}
             spellCheck={false}
             className="w-[26rem] max-w-[60%] h-8 px-2.5 rounded-btn border border-border bg-base text-xs font-mono text-foreground focus:border-accent/50 focus:outline-none"
           />
         </div>
+
+        {/* scheme 被白名单挡掉时按钮会静默消失, 这里必须给出原因, 否则用户无从排查 */}
+        {!isTemplateSchemeAllowed(extCfg.templates[extCfg.target]) && (
+          <div className="text-[11px] text-danger">
+            模板 scheme 不在允许范围 (http / https / tdx / hexin)，该链接不会生效
+          </div>
+        )}
       </section>
 
       <section className="rounded-card border border-border bg-surface p-5 mt-6">

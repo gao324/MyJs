@@ -339,7 +339,8 @@ export function ReviewPage() {
                   onChange={(e) => setFocus(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && !isGenerating) generate() }}
                   placeholder="可选:补充复盘关注点,如「半导体板块持续性如何」「量能是否持续」"
-                  className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted/60"
+                  /* min-w-0: input 自带 size 决定的固有最小宽度, 不归零会在窄屏撑出卡片 */
+                  className="flex-1 min-w-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted/60"
                 />
                 {focus && (
                   <button onClick={() => setFocus('')} className="text-xs text-muted transition-colors hover:text-foreground">清除</button>
@@ -658,7 +659,9 @@ function MarketSummaryBar({ data }: { data: OverviewMarket }) {
   const indices = (data.indices ?? []).slice(0, 4)
 
   return (
-    <div className="flex flex-nowrap items-center gap-x-5 overflow-x-auto rounded-card border border-border bg-surface/80 px-4 py-2.5 [&>*]:shrink-0">
+    /* 桌面端是横向滚动条 (nowrap + overflow-x-auto); 手机端改为换行 —— 屏宽不够时
+       滚动条只露出前几项且没有可滚提示, 换行能让七项数据全部落在视野里。 */
+    <div className="flex flex-nowrap max-md:flex-wrap items-center gap-x-5 gap-y-2 max-md:gap-x-4 overflow-x-auto rounded-card border border-border bg-surface/80 px-4 py-2.5 [&>*]:shrink-0">
       {/* 情绪分(带色徽章)—— 复盘的核心定调 */}
       <div className="flex items-center gap-2">
         <span

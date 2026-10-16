@@ -37,6 +37,12 @@ export interface DefaultStrategyBasicFilter {
   boards: string[]
 }
 
+/** 个股详情外链: 目标 App 二选一 (tdx=通达信, hexin=同花顺) + 各自的 URL 模板 */
+export interface StockExternalConfig {
+  target: 'tdx' | 'hexin'
+  templates: { tdx: string; hexin: string }
+}
+
 export const storage = {
   /** 查询轮询 / SSE 配置 */
   queryConfig:          kv<unknown>('tf-stocks-query-config'),
@@ -58,8 +64,11 @@ export const storage = {
   /** 个股详情多日分时周期 */
   stockPreviewIntradayDays: kv<number>('stock_preview_intraday_days'),
 
-  /** 个股详情外链 URL 模板 (支持 {code}/{market}/{symbol}; 留空关闭) */
+  /** 旧版个股详情外链单模板 — 仅作一次性迁移读取源, 迁移后保留不删 (便于回退) */
   stockExternalTemplate: kv<string>('stock_external_template'),
+
+  /** 个股详情外链配置 (target: 通达信/同花顺二选一 + 各自模板; 见 lib/stock-external-link.ts) */
+  stockExternalLinks:    kv<StockExternalConfig | null>('stock_external_links'),
 
   /** 策略结果列表列配置 */
   screenerResultColumns: kv<unknown[]>('screener_result_columns'),

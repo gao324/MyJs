@@ -88,7 +88,8 @@ function KpiWidget({ ctx }: { ctx: WidgetCtx }) {
   const strongUp = data.breadth.strong_up ?? 0
   const strongDown = data.breadth.strong_down ?? 0
   return (
-    <div className="grid h-full grid-cols-3 gap-1 xl:grid-cols-6">
+    /* 手机端两列: 三列时单元格只有 ~110px, 「4922/44/577」「1.8% / 0.95」会被截断 */
+    <div className="grid h-full grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-6">
       <KpiCell label="个股涨 / 平 / 跌" value={<><span className="text-bull">{data.breadth.up}</span><span className="text-muted">/</span><span className="text-muted">{data.breadth.flat}</span><span className="text-muted">/</span><span className="text-bear">{data.breadth.down}</span></>} sub={`上涨率 ${data.breadth.up_pct.toFixed(1)}%`} />
       <KpiCell label="强势 / 弱势" value={<><span className="text-bull">{strongUp}</span><span className="text-muted">/</span><span className="text-bear">{strongDown}</span></>} sub="涨跌 ≥3%" />
       <KpiCell label={<span className="inline-flex items-center gap-1">涨停 / 跌停<SealedBadge degraded={isSealedDegrade} hasDepth={hasDepth} isHistorical={false} sealedReady={sealedReady} sealedCountsUp={{ real: data.limit.limit_up, fake: data.limit.fake_up ?? 0, pending: 0 }} sealedCountsDown={{ real: data.limit.limit_down, fake: data.limit.fake_down ?? 0, pending: 0 }} rawUp={data.limit.limit_up + (data.limit.fake_up ?? 0)} rawDown={data.limit.limit_down + (data.limit.fake_down ?? 0)} invalidateKeys={['overview-market', 'limit-ladder']} /></span>} value={<><span className="text-bull">{data.limit.limit_up}</span><span className="text-muted">/</span><span className="text-bear">{data.limit.limit_down}</span></>} sub={`封板率 ${(data.limit.seal_rate ?? 0).toFixed(0)}%`} />
@@ -110,7 +111,7 @@ function TrendWidget({ ctx }: { ctx: WidgetCtx }) {
     <div className="flex h-full flex-col">
       <div>
         <SectionTitle icon={LineChart} title="趋势强度" hint="均线/新高低" />
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           <MiniMetric label="站上MA5" value={`${data.trend.above_ma5_pct.toFixed(0)}%`} cls="text-accent" />
           <MiniMetric label="站上MA20" value={`${data.trend.above_ma20_pct.toFixed(0)}%`} cls="text-accent" />
           <MiniMetric label="站上MA60" value={`${data.trend.above_ma60_pct.toFixed(0)}%`} cls="text-accent" />
@@ -121,7 +122,7 @@ function TrendWidget({ ctx }: { ctx: WidgetCtx }) {
       </div>
       <div className="mt-1.5 border-t border-border pt-1.5">
         <SectionTitle icon={Target} title="实用监控" hint="盘中观察" />
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           <MiniMetric label="炸板" value={`${data.limit.broken ?? 0}`} cls="text-warning" />
           <MiniMetric label="跌停" value={`${data.limit.limit_down ?? 0}`} cls="text-bear" />
           <MiniMetric label="站上MA60" value={`${data.trend.above_ma60_pct.toFixed(0)}%`} cls="text-accent" />
