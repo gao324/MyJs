@@ -36,7 +36,6 @@ import {
   Moon,
   X,
   WifiOff,
-  Menu,
   PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
@@ -92,7 +91,7 @@ const nav = [
   { to: '/data',             label: '数据',     icon: IconData },
 ] as const
 
-/** 手机端 (<768px) 抽屉里的全部页面 —— 首批只做这四个功能 */
+/** 手机端 (<768px) 底部标签栏的全部页面 —— 首批只做这四个功能 */
 const MOBILE_NAV_PATHS = ['/', '/screener', '/lots', '/review'] as const
 
 /** 亮/暗主题切换 — 状态存 localStorage, 生效见 lib/theme.ts */
@@ -107,6 +106,44 @@ function ThemeToggle() {
     >
       {dark ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
     </button>
+  )
+}
+
+/** 手机端底部标签栏的一项 */
+type TabBarItem = { to: string; label: string; icon: (props: BrandIconProps) => ReactNode }
+
+/**
+ * 手机端 (<768px) 底部标签栏 —— 替代原来的侧边栏抽屉。
+ * 只承载四个功能页; 抽屉里的品牌区/连接状态/数据助手入口/实时行情面板/主题切换一并下线
+ * (行情四只指数在看板首屏已有, AI 助手有悬浮球), 设置入口单独放右上角。
+ * 用 md:hidden 而不是 JS 判断: 避免首帧拿不到视口宽度时闪一下。
+ */
+function MobileTabBar({ items }: { items: TabBarItem[] }) {
+  return (
+    <nav
+      aria-label="主导航"
+      className="md:hidden fixed inset-x-0 bottom-0 z-40 flex border-t border-border bg-surface/95 backdrop-blur-sm pb-[env(safe-area-inset-bottom)]"
+    >
+      {items.map(({ to, label, icon: Icon }) => (
+        <NavLink
+          key={to}
+          to={to}
+          className={({ isActive }) =>
+            cn(
+              'flex flex-1 flex-col items-center gap-0.5 py-2 transition-colors duration-150 ease-smooth',
+              isActive ? 'text-accent' : 'text-muted',
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <Icon className="h-[22px] w-[22px] shrink-0" />
+              <span className={cn('text-[10px] leading-none', isActive && 'font-medium')}>{label}</span>
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
   )
 }
 
@@ -360,7 +397,7 @@ function AIConfigBadge({ configured, model }: { configured?: boolean; model?: st
 }
 
 // 侧边栏桌面三态: expanded(14rem) / rail(3.5rem 图标条) / hidden(0 + 左缘悬浮按钮)。
-// 移动端 (<768px) 不参与三态 — aside 以抽屉呈现 (见 Layout 内 drawerOpen)。
+// 仅桌面 (≥768px) 存在侧边栏; 手机端导航在底部标签栏。
 type NavState = 'expanded' | 'rail' | 'hidden'
 
 export function Layout() {
@@ -399,7 +436,7 @@ export function Layout() {
   const [watchlistNavExpanded, setWatchlistNavExpanded] = useState(location.pathname === '/watchlist')
 
   // 侧边栏三态 — expanded(14rem) / rail(3.5rem 图标条) / hidden(0, 左缘悬浮按钮唤出)。
-  // 仅桌面 (≥768px) 参与三态; 移动端 aside 以抽屉呈现, 由 drawerOpen 控制, 恒渲染完整形态。
+  // 仅桌面 (≥768px) 存在侧边栏; 手机端导航在底部标签栏 (见 MobileTabBar)。
   // 持久化到 localStorage; 迁移旧两态键 tf-nav-collapsed (收起 → 图标条)。
   const [navState, setNavState] = useState<NavState>(() => {
     try {
@@ -409,7 +446,6 @@ export function Layout() {
       return localStorage.getItem('tf-nav-collapsed') === '1' ? 'rail' : 'expanded'
     } catch { return 'expanded' }
   })
-  const [drawerOpen, setDrawerOpen] = useState(false)
   const isDesktop = useIsDesktop()
   // 桌面 hidden 态的左缘悬浮按钮: hover 1s 以 overlay 预览 (不挤压主区), 点击固定展开 (push)
   const [overlayPreview, setOverlayPreview] = useState(false)
@@ -418,21 +454,13 @@ export function Layout() {
     setNavState(s)
     try { localStorage.setItem('tf-nav-state', s) } catch {}
   }
-  // 图标条形态仅桌面 rail 态成立 (移动端抽屉与 overlay 预览恒为完整形态)
+  // 图标条形态仅桌面 rail 态成立 (overlay 预览恒为完整形态)
   const railMode = isDesktop && navState === 'rail'
-  // 路由跳转/切回桌面时关抽屉; ESC 同样关闭
-  useEffect(() => { setDrawerOpen(false) }, [location.pathname, isDesktop])
-  useEffect(() => {
-    if (!drawerOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [drawerOpen])
 
   // 分组等权平均涨跌幅 — 复用 watchlist/enriched 查询缓存(与自选页同 key,
-  // 盘中随 SSE 刷新)。可见性门控: 子菜单实际可见(桌面展开 + 二级菜单展开, 或
-  // 移动端抽屉打开) 时才拉取, 收起/隐藏/抽屉关闭下不为隐藏 UI 发请求。
-  const sidebarFullyVisible = navState === 'expanded' && (isDesktop || drawerOpen)
+  // 盘中随 SSE 刷新)。可见性门控: 子菜单实际可见(桌面侧边栏展开) 时才拉取,
+  // 收起/隐藏下不为隐藏 UI 发请求。
+  const sidebarFullyVisible = navState === 'expanded' && isDesktop
   const navGroupPctVisible = groupsInNav && sidebarFullyVisible && watchlistNavExpanded
   const { data: navWatchlist } = useQuery({
     queryKey: QK.watchlist,
@@ -615,8 +643,7 @@ export function Layout() {
   const hiddenIds = new Set(prefs?.nav_hidden ?? [])
   const visibleNavItems = (isDesktop
     ? navItems
-    /* 手机端只保留首批四个功能页 (看板 / 策略 / 持仓提醒 / 复盘)。
-       其余桌面页不进抽屉 —— 全量 19 项在手机上没法用。
+    /* 手机端只保留首批四个功能页 (看板 / 策略 / 持仓提醒 / 复盘), 供底部标签栏使用。
        这里不过 nav_hidden: 这四个是该端的全部功能, 缺一个就没得用了。 */
     : navItems.filter(n => (MOBILE_NAV_PATHS as readonly string[]).includes(n.to))
   ).filter(n => !hiddenIds.has(n.to) && !hiddenIds.has(n.to.replace(/^\/analysis\//, '')))
@@ -689,25 +716,16 @@ export function Layout() {
       className="h-full grid bg-base text-foreground overflow-hidden transition-[grid-template-columns] duration-200 ease-smooth"
       style={{ gridTemplateColumns: isDesktop && !overlayPreview ? (navState === 'expanded' ? '14rem 1fr' : navState === 'rail' ? '3.5rem 1fr' : '0 1fr') : '1fr' }}
     >
-      {/* 移动端抽屉遮罩 */}
-      {!isDesktop && drawerOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50"
-          onClick={() => setDrawerOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      {/* 移动端汉堡按钮 / 桌面 hidden 态左缘悬浮按钮 (hover 1s overlay 预览, 点击固定展开) */}
-      {(!isDesktop || navState === 'hidden') && !overlayPreview && (
+      {/* 桌面 hidden 态左缘悬浮按钮 (hover 1s overlay 预览, 点击固定展开)。
+          手机端不再有抽屉 —— 导航在底部标签栏, 设置入口在右上角。 */}
+      {isDesktop && navState === 'hidden' && !overlayPreview && (
         <button
           onClick={() => {
             window.clearTimeout(overlayTimer.current)
             setOverlayPreview(false)
-            if (isDesktop) setNavStatePersist('expanded')
-            else setDrawerOpen(true)
+            setNavStatePersist('expanded')
           }}
           onMouseEnter={() => {
-            if (!isDesktop) return
             window.clearTimeout(overlayTimer.current)
             overlayTimer.current = window.setTimeout(() => setOverlayPreview(true), 1000)
           }}
@@ -715,26 +733,19 @@ export function Layout() {
           className={cn(
             'fixed z-30 rounded-btn border border-border bg-surface/90 text-muted shadow-lg backdrop-blur-sm',
             'hover:text-foreground hover:bg-elevated transition-colors duration-150 ease-smooth',
-            isDesktop ? 'left-1.5 top-1/2 -translate-y-1/2 p-2' : 'left-3 top-3 p-2',
+            'left-1.5 top-1/2 -translate-y-1/2 p-2',
           )}
-          title={isDesktop ? '展开菜单' : '打开菜单'}
+          title="展开菜单"
         >
-          {isDesktop
-            ? <PanelLeftOpen className="h-4 w-4 shrink-0" />
-            : <Menu className="h-4 w-4 shrink-0" />}
+          <PanelLeftOpen className="h-4 w-4 shrink-0" />
         </button>
       )}
       <aside
         onMouseLeave={() => { if (overlayPreview) setOverlayPreview(false) }}
         className={cn(
-          'bg-surface flex flex-col min-h-0 overflow-hidden',
-          isDesktop
-            ? cn('h-full', navState === 'hidden' && !overlayPreview ? 'border-r-0' : 'border-r border-border')
-            : cn(
-                'fixed inset-y-0 left-0 z-50 w-[80vw] max-w-[320px] border-r border-border shadow-2xl',
-                'transition-transform duration-200 ease-smooth',
-                drawerOpen ? 'translate-x-0' : '-translate-x-full',
-              ),
+          // max-md:hidden 必需: 手机端侧边栏已下线, 不加则它仍是 grid 子项, 会挤掉主区
+          'bg-surface flex flex-col min-h-0 overflow-hidden h-full max-md:hidden',
+          navState === 'hidden' && !overlayPreview ? 'border-r-0' : 'border-r border-border',
           overlayPreview && 'fixed inset-y-0 left-0 z-50 w-56 shadow-2xl border-r border-border',
         )}
       >
@@ -751,30 +762,20 @@ export function Layout() {
                 Tick Stock Panel
               </div>
             )}
-            {/* 收起/展开 按钮 (桌面三态循环) / 移动端抽屉关闭按钮 */}
-            {isDesktop ? (
-              <button
-                onClick={toggleNavCollapsed}
-                className={cn(
-                  'flex items-center rounded-btn text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth',
-                  railMode ? 'justify-center p-1.5' : 'ml-auto p-1.5',
-                )}
-                title={railMode ? '展开菜单' : '收起菜单'}
-              >
-                {railMode
-                  ? <PanelLeft className="h-3.5 w-3.5 shrink-0" />
-                  : <PanelLeftClose className="h-3.5 w-3.5 shrink-0" />
-                }
-              </button>
-            ) : (
-              <button
-                onClick={() => setDrawerOpen(false)}
-                className="ml-auto flex items-center rounded-btn p-1.5 text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth"
-                title="关闭菜单"
-              >
-                <X className="h-4 w-4 shrink-0" />
-              </button>
-            )}
+            {/* 收起/展开 按钮 (桌面三态循环) */}
+            <button
+              onClick={toggleNavCollapsed}
+              className={cn(
+                'flex items-center rounded-btn text-muted hover:text-foreground hover:bg-elevated/60 transition-colors duration-150 ease-smooth',
+                railMode ? 'justify-center p-1.5' : 'ml-auto p-1.5',
+              )}
+              title={railMode ? '展开菜单' : '收起菜单'}
+            >
+              {railMode
+                ? <PanelLeft className="h-3.5 w-3.5 shrink-0" />
+                : <PanelLeftClose className="h-3.5 w-3.5 shrink-0" />
+              }
+            </button>
           </div>
 
             {/* 状态卡 — 收起时隐藏 */}
@@ -853,9 +854,7 @@ export function Layout() {
                         {!railMode && (
                           <span className="flex min-w-0 flex-1 items-center gap-1.5">
                             <span className="truncate">{label}</span>
-                            {/* ext 标记是给桌面端看清页面归属的架构提示; 手机端抽屉只有四个
-                                功能页, 这个标记既无对照对象又占宽度, 直接不显示 */}
-                            {arch === 'ext' && isDesktop && (
+                            {arch === 'ext' && (
                               <span
                                 title="扩展域页面 — 可整体替换/移除而不伤核心"
                                 className="shrink-0 font-mono text-[8px] font-medium uppercase leading-none tracking-[0.08em] text-muted/70"
@@ -1128,9 +1127,9 @@ export function Layout() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        /* max-md:pt-12 给顶部的悬浮菜单按钮让位; max-md:pb-20 给右下角 AI 悬浮球让位 ——
-           手机端这两处都浮在内容之上, 不留空间的话最后一行永远被盖住。 */
-        className="h-full overflow-auto scrollbar-gutter-stable max-md:pt-12 max-md:pb-20"
+        /* 手机端浮着两样东西, 都得留位置: 右上角设置按钮 (pt) 与底部标签栏 (pb,
+           标签栏高约 52px + 安全区, 取 88px 让最后一屏内容能滚出按钮下方)。 */
+        className="h-full overflow-auto scrollbar-gutter-stable max-md:pt-12 max-md:pb-[88px]"
       >
         {streamStatus === 'reconnecting' && (
           <div
@@ -1152,6 +1151,26 @@ export function Layout() {
           <Outlet />
         </Suspense>
       </motion.main>
+
+      {/* 手机端导航 — 底部标签栏 (四个功能页) + 右上角设置入口。
+          设置必须留在手机上: 个股外链模板等偏好存 localStorage, 是每台设备各自的配置,
+          在电脑上配好不会同步到手机, 少了入口手机就永远配不出外链跳转。
+          isDesktop JS 门控 + md:hidden 双保险: 前者避免桌面端多渲染一份 19 项 nav 到 DOM,
+          后者兜住首帧视口判断。 */}
+      {!isDesktop && (
+        <>
+          <MobileTabBar items={visibleNavItems} />
+          <NavLink
+            to="/settings"
+            className="md:hidden fixed right-3 top-3 z-30 p-2 rounded-btn border border-border bg-surface/90 text-muted shadow-lg backdrop-blur-sm transition-colors duration-150 ease-smooth hover:text-foreground hover:bg-elevated"
+            title="手机端设置"
+            aria-label="设置"
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+          </NavLink>
+        </>
+      )}
+
       <ToastContainer />
       <AlertToastContainer />
       <AiAnalysisHost />
