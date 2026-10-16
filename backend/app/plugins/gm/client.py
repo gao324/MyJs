@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
@@ -47,6 +48,23 @@ def _venv_python() -> Path:
     if os.name == "nt":
         return d / "Scripts" / "python.exe"
     return d / "bin" / "python"
+
+
+def _gm_serv_addr() -> str | None:
+    """GM 终端服务地址: 容器内须指向宿主机, 否则 SDK 默认连 127.0.0.1:7001 会失败。
+
+    GM_SERV_ADDR 环境变量显式覆盖优先; 否则仅在容器内 (/.dockerenv) 且
+    host.docker.internal 可解析时改指宿主机 (Docker Desktop 语义)。
+    """
+    override = (os.environ.get("GM_SERV_ADDR") or "").strip()
+    if override:
+        return override
+    try:
+        if Path("/.dockerenv").exists() and socket.gethostbyname("host.docker.internal"):
+            return "host.docker.internal:7001"
+    except OSError:
+        return None
+    return None
 
 
 def venv_ready() -> bool:
@@ -98,6 +116,9 @@ def run_op(op: str, params: dict | None = None, timeout_s: float = 300.0) -> lis
     if not key:
         raise GmError("GM Token 未配置 (设置页填写或配置环境变量 GM_API_KEY)")
     req = {"token": key, "op": op, "params": params or {}}
+    serv = _gm_serv_addr()
+    if serv:
+        req["serv_addr"] = serv
     fd, req_path = tempfile.mkstemp(prefix="gm_req_", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -138,6 +159,9 @@ def probe_token(api_key: str, timeout_s: float = 60.0) -> tuple[bool, str]:
         except GmError as e:
             return False, f"{e} (可稍后在设置页重试)"
     req = {"token": api_key.strip(), "op": "current", "params": {"symbols": ["SHSE.600519"]}}
+    serv = _gm_serv_addr()
+    if serv:
+        req["serv_addr"] = serv
     fd, req_path = tempfile.mkstemp(prefix="gm_probe_", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

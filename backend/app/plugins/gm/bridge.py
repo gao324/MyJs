@@ -41,6 +41,7 @@ def main() -> None:
             get_symbols,
             get_trading_dates_by_year,
             history,
+            set_serv_addr,
             set_token,
             stk_get_daily_basic,
             stk_get_finance_deriv,
@@ -55,6 +56,9 @@ def main() -> None:
 
     try:
         set_token(req.get("token") or "")
+        serv = (req.get("serv_addr") or "").strip()
+        if serv:
+            set_serv_addr(serv)
         op = req.get("op")
         p = req.get("params") or {}
         rows: list[dict] = []
