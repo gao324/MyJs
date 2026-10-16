@@ -141,7 +141,14 @@ function renderRSI(){if(rsiChart)rsiChart.dispose();rsiChart=echarts.init(docume
 function renderBOLL(){if(bollChart)bollChart.dispose();bollChart=echarts.init(document.getElementById('chart-boll'));const c=getThemeColors();bollChart.setOption({grid:{left:'10%',right:'4%',top:'8%',height:'60%'},xAxis:{data:dateLabels,axisLabel:{color:c.textMuted,fontSize:8,interval:8}},yAxis:{axisLabel:{color:c.textMuted,fontSize:9}},series:[{name:'上轨',type:'line',data:bollData.upper,lineStyle:{color:'rgba(245,86,86,0.4)',width:1},showSymbol:false},{name:'中轨',type:'line',data:bollData.mid,lineStyle:{color:'#e3c26d',width:1.2},showSymbol:false},{name:'下轨',type:'line',data:bollData.lower,lineStyle:{color:'rgba(40,199,91,0.4)',width:1},showSymbol:false,areaStyle:{color:'rgba(212,168,83,0.05)'}},{name:'收盘价',type:'line',data:closes,lineStyle:{color:'#4a90d9',width:1.5},showSymbol:false}],legend:{data:['上轨','中轨','下轨','收盘价'],top:0,textStyle:{color:c.textSecondary,fontSize:10}}});}
 
 // ── 渲染入口（全部6个图表）──
-function renderCharts() { renderPie(); renderKline(); renderMACD(); renderKDJ(); renderRSI(); renderBOLL(); }
+function renderCharts() {
+  if (document.getElementById('chart-business-pie')) renderPie();
+  if (document.getElementById('chart-kline-full')) renderKline();
+  if (document.getElementById('chart-macd')) renderMACD();
+  if (document.getElementById('chart-kdj')) renderKDJ();
+  if (document.getElementById('chart-rsi')) renderRSI();
+  if (document.getElementById('chart-boll')) renderBOLL();
+}
 
 // ── 主题切换 ──
 const toggleBtn = document.getElementById('themeToggle');

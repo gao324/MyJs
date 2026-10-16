@@ -23,6 +23,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
 }
 
 MIN_LEN: dict[tuple[str, str], int] = {
+    # 完整版报告沿用原有下限；六项简报视图只在展示层截断数组，不改数据契约。
     ("quality", "scores"): 6, ("quality", "positives"): 3, ("quality", "negatives"): 3,
     ("risk", "stop_signals"): 5, ("risk", "matrix"): 3,
     ("news", "items"): 5, ("chain", "nodes"): 3,

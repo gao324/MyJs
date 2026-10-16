@@ -43,6 +43,31 @@ def test_digest_marks_missing_blocks():
     assert rs.MISSING in digest
 
 
+def test_digest_includes_rotation_context_and_chip_inputs():
+    blocks = _blocks(
+        gdhs=[{"股东户数统计截止日": "2026-09-30", "股东户数-本次": 100}],
+        top10_free=[{"股东名称": "流通股东A"}],
+        basic_info=[{"item": "所属行业", "value": "电子设备"}],
+        _industry_rotation={"available": True, "industry": [{"name": "电子"}],
+                            "concept": [{"name": "算力"}]},
+    )
+    digest = rs.build_digest(blocks)
+    assert "近期行业/概念轮动" in digest and "算力" in digest
+    assert "所属行业: 电子设备" in digest
+    assert "十大流通股东" in digest and "流通股东A" in digest
+    assert "股东户数近两期" in digest
+
+
+def test_full_report_contract_keeps_all_array_minimums():
+    from app.reporting.content_schema import MIN_LEN
+
+    assert MIN_LEN[("risk", "matrix")] == 3
+    assert MIN_LEN[("news", "items")] == 5
+    assert "risk.matrix 至少 3 条" in rs.shard_system("valuation_risk")
+    assert "每个叙述字段最多2句" in rs.JSON_RULES
+    assert "行业轮动数据" in rs.shard_system("macro_chain")
+
+
 def test_extract_json_strips_fence():
     assert rs.extract_json("```json\n{\"a\": 1}\n```") == {"a": 1}
 

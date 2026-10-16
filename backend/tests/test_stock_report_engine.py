@@ -21,6 +21,23 @@ async def _collect(agen):
     return [chunk async for chunk in agen]
 
 
+def test_report_stream_shows_queue_phase(monkeypatch):
+    """额度等待期间前端可见 queued 阶段文案。"""
+    monkeypatch.setattr(stock_analyzer.settings, "stock_analysis_engine", "report", raising=False)
+
+    def _fake_spawn(job, runner):
+        job.update({"status": "done", "phase": "queued", "progress": 0,
+                    "report_id": "sr2", "report_url": "/api/stock-reports/sr2/html",
+                    "full_report_url": ""})
+
+    monkeypatch.setattr(stock_report_jobs, "_spawn", _fake_spawn)
+    monkeypatch.setattr(stock_report_pipeline, "POLL_SECONDS", 0.01)
+    events = _events(asyncio.run(_collect(
+        stock_report_pipeline.analyze_stock_stream(None, None, "600519.SH"))))
+    deltas = [e for e in events if e["type"] == "delta"]
+    assert deltas and "等待系统资源" in deltas[0]["content"]
+
+
 def _events(chunks):
     return [json.loads(c) for c in chunks]
 
@@ -40,6 +57,29 @@ def test_default_engine_is_report():
     assert set(stock_analyzer.VALID_ENGINES) == {"report", "dsa", "legacy"}
 
 
+def test_rotation_context_averages_recent_industry_and_concept_leaders(monkeypatch):
+    from app.services import rps_rotation
+
+    dates = [f"2026-10-{day:02d}" for day in range(15, 10, -1)]
+    def _matrix(repo, days, kind, level=None):
+        columns = {day: [["电子", 0.05], ["医药", 0.02]] for day in dates}
+        if kind == "concept":
+            columns = {day: [["算力", 0.08], ["机器人", 0.03]] for day in dates}
+        return {"dates": dates, "columns": columns, "concept_count": 2}
+
+    monkeypatch.setattr(rps_rotation, "build_rps_rotation", _matrix)
+    context = stock_report_pipeline._collect_rotation_context(object())
+    assert context["available"] is True
+    assert context["as_of"] == "2026-10-15"
+    assert context["industry_window"] == context["concept_window"] == 5
+    assert context["industry"][0] == {"name": "电子", "change_pct": 5.0}
+    assert context["concept"][0] == {"name": "算力", "change_pct": 8.0}
+
+
+def test_rotation_context_fails_closed_without_repository():
+    assert stock_report_pipeline._collect_rotation_context(None) == {"available": False}
+
+
 def test_report_engine_streams_progress_and_done(monkeypatch):
     monkeypatch.setattr(stock_analyzer.settings, "stock_analysis_engine", "report", raising=False)
 
@@ -57,6 +97,7 @@ def test_report_engine_streams_progress_and_done(monkeypatch):
     assert events[0]["type"] == "meta" and events[0]["symbol"] == "600519.SH"
     assert events[-1]["type"] == "done" and events[-1]["report_id"] == "sr1"
     assert events[-1]["report_url"] == "/api/stock-reports/sr1/html"
+    assert events[-1]["full_report_url"] == ""  # 降级/桩任务没有完整版入口
 
 
 def test_report_job_marks_config_failure(monkeypatch):
@@ -100,21 +141,29 @@ def test_full_job_renders_and_publishes_with_fixture_data(monkeypatch, tmp_path)
     assert job["report_id"]
     record = stock_report_store.get_report(job["report_id"])
     assert record is not None and record["fill_rate"] >= 0.5
-    assert stock_report_store.html_path(job["report_id"]).exists()
+    assert record["full_available"] is True
+    compact_path = stock_report_store.html_path(job["report_id"])
+    full_path = stock_report_store.full_html_path(job["report_id"])
+    assert compact_path.exists() and full_path.exists()
+    full_url = f'/api/stock-reports/{job["report_id"]}/full-html'
+    assert f'href="{full_url}"' in compact_path.read_text(encoding="utf-8")
+    assert job["full_report_url"] == full_url
     drafts = list((tmp_path / "user_data" / "stock_reports").glob("stock-report-draft-*"))
     assert drafts == []
 
 
-def test_report_job_rejected_when_limiter_full():
-    """并发预算占满时直接失败(不排队): heavy_job_limiter 共享预算。"""
+def test_report_job_reports_error_when_limiter_wait_times_out(monkeypatch):
+    """排队等待超过上限才失败: 独占管道运行期间研报不再秒失败。"""
     from app.services.heavy_job_limiter import heavy_job_limiter
 
+    monkeypatch.setattr(stock_report_pipeline, "HEAVY_ACQUIRE_TIMEOUT", 0.05)
     assert heavy_job_limiter.acquire("normal", timeout=0) is True
     assert heavy_job_limiter.acquire("normal", timeout=0) is True
     try:
         job = stock_report_jobs.start("600519.SH", "")
         asyncio.run(stock_report_pipeline.run_report_job(job))
         assert job["status"] == "error" and "繁忙" in job["error"]
+        assert job["phase"] == "queued"
     finally:
         heavy_job_limiter.release("normal")
         heavy_job_limiter.release("normal")

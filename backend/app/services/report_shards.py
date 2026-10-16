@@ -148,10 +148,10 @@ def _dict_rows(v: Any) -> list[dict]:
 
 
 def _momentum(rows: list[list]) -> str:
-    """动量：近 5/10/20/60 日涨跌幅；K 线不足或基期为 0 → 该窗口写数据缺失。"""
+    """动量：近 5/10/20/60/120 日涨跌幅；K 线不足或基期为 0 → 写数据缺失。"""
     closes = [r[4] for r in rows]
     parts = []
-    for w in (5, 10, 20, 60):
+    for w in (5, 10, 20, 60, 120):
         if len(closes) > w and closes[-w - 1]:
             parts.append(f"近{w}日{round((closes[-1] / closes[-w - 1] - 1) * 100, 2)}%")
         else:
@@ -226,6 +226,9 @@ def dividend_yield(blocks: Any, today: Any = None) -> dict:
     count/latest_date/latest_cash/window_start；价格或分红不足时相应键为 None。
     """
     d = blocks if isinstance(blocks, dict) else {}
+    if today is None:
+        from app.market_time import cn_today
+        today = cn_today()
     end = _day10(today) or dt.date.today().isoformat()
     start = (dt.date.fromisoformat(end) - dt.timedelta(days=365)).isoformat()
     price = spot_price(d)
@@ -352,6 +355,18 @@ def build_digest(blocks: Any) -> str:
     if dy.get("latest_cash") is not None:
         lines.append(f"【最近分红】{dy.get('latest_date') or MISSING} 除权除息，"
                  f"每10股派息 {dy['latest_cash']} 元")
+    lines.append("【公司行业/业务分类】")
+    basic = _dict_rows(d.get("basic_info"))
+    industry_info = []
+    for row in basic:
+        label = str(row.get("item") or row.get("字段") or "").strip()
+        value = row.get("value") if row.get("value") is not None else row.get("值")
+        if label and value not in (None, "") and any(
+                key in label for key in ("行业", "主营", "业务", "概念")):
+            industry_info.append(f"{label}: {str(value)[:120]}")
+        if len(industry_info) >= 5:
+            break
+    lines += industry_info or [MISSING]
     lines.append("【主营构成】")
     zygc = _dict_rows(d.get("zygc"))[:10]
     lines += [_jd(r, 200) for r in zygc] or [MISSING]
@@ -371,8 +386,18 @@ def build_digest(blocks: Any) -> str:
     ff = _dict_rows(d.get("fund_flow"))
     if ff:
         lines.append("【资金流（近3日）】" + _jd(ff[-3:], 600))
+    lines.append("【股东户数近两期】")
+    holders = _dict_rows(d.get("gdhs"))[:2]
+    lines += [_jd(r, 240) for r in holders] or [MISSING]
+    lines.append("【十大流通股东】")
+    free = _dict_rows(d.get("top10_free"))[:5]
+    lines += [_jd(r, 160) for r in free] or [MISSING]
+    rotation = d.get("_industry_rotation")
+    lines.append("【近期行业/概念轮动（近5交易日平均涨幅靠前）】")
+    lines.append(_jd(rotation, 800) if isinstance(rotation, dict) and rotation.get("available")
+                 else "未获取到行业/概念轮动数据；不得据此判断热点关联")
     lines.append("【近期动态（news.items 的素材，按事件性质判断利好/利空/中性）】")
-    lines += _recent_lines(d) or [MISSING]
+    lines += _recent_lines(d, limit=5) or [MISSING]
     return "\n".join(lines)
 
 
@@ -385,7 +410,10 @@ def build_digest(blocks: Any) -> str:
 ROLE = "你是A股资深卖方研究员，负责把给定的数据包写成结构化研究结论"
 JSON_RULES = ("严格 JSON：只输出 JSON，无解释、无 Markdown 围栏。"
               "所有数字必须来自数据包，禁止编造；数据包里没有的字段一律写\"数据缺失\"。"
-              "本次只输出指定的键，键名与层级必须与要求完全一致，数组条数必须达到下限。")
+              "报告仅服务于六项简报：评分分红、三年盈利与股东、产业链/轮动/护城河、业务弹性、"
+              "技术筹码、近期舆情。每个叙述字段最多2句且尽量不超过60个汉字；列表只写必要事实，"
+              "最多3条（契约要求更多时除外），禁止同义重复、模板套话和未要求的交易建议。"
+              "本次只输出指定的键，键名与层级必须完全一致。")
 
 
 # ---- JSON 骨架（由 content_schema 机械生成：键名/类型/枚举/条数与校验器同源）----
@@ -420,7 +448,7 @@ _STR_NOTES = {
     ("conclusion", "verdict_detail"): "字符串·详细说明段落",
     ("mission", "thesis"): "字符串·核心命题",
     ("macro", "core_contradiction"): "字符串·XX vs YY",
-    ("chain", "judgment"): "字符串·关键判断",
+    ("chain", "judgment"): "字符串·产业链位置、轮动热点关联、护城河；缺轮动数据或护城河证据须说明无法确认，最多2句",
     ("quality", "badge"): "字符串·评级徽章",
     ("elasticity", "tree_root"): "字符串·只写一段文字，禁止对象/数组",
     ("elasticity", "sensitivity"): "字符串·只写一段文字，禁止对象/数组",
@@ -428,7 +456,7 @@ _STR_NOTES = {
     ("valuation", "rr"): "字符串·只写一段文字，禁止对象/数组",
     ("valuation", "fund_tech"): "字符串·只写一段文字，禁止对象/数组",
     ("tracking", "summary"): "字符串·总结段落",
-    ("technical", "verdict"): "字符串·综合研判段落",
+    ("technical", "verdict"): "字符串·量价与筹码趋势简述，最多2句；数据不足须说明",
 }
 
 
@@ -461,11 +489,12 @@ def _skeleton_text(keys: tuple[str, ...]) -> str:
     skel = {blk: {k: _skel_leaf(blk, k, t) for k, t in SCHEMA[blk].items()}
             for blk in keys}
     text = json.dumps(skel, ensure_ascii=False, indent=1)
-    needs = [f"{blk}.{k} 至少 {MIN_LEN.get((blk, k), 1)} 条"
-             for blk in keys for k, t in SCHEMA[blk].items() if t is list]
+    needs = [f"{blk}.{k} 至少 {MIN_LEN[(blk, k)]} 条"
+             for blk in keys for k, t in SCHEMA[blk].items()
+             if t is list and (blk, k) in MIN_LEN]
     if needs:
-        text += "\n（条数下限另行说明，不在数组里：不足时用【数据包】里的真实素材补足——" \
-                "禁止用\"数据缺失\"占位凑数；" + "；".join(needs) + "。）"
+        text += "\n（仅以下数组有条数下限；其它数组无相关事实时可输出空数组。" \
+                "不足时禁止用\"数据缺失\"占位凑数；" + "；".join(needs) + "。）"
     return text
 
 
@@ -482,11 +511,9 @@ def shard_system(key: str) -> str:
     parts = [ROLE + "。", JSON_RULES,
              SHARDS[key] + "。",
              "【本次只输出以下 JSON】键名/层级/类型照抄骨架，多一键少一键都不行；"
-             "数据包里确实没有的**原始数据**（某项指标/金额/日期本身缺失）才写字符串 "
-             "\"数据缺失\" 四个字；**判断类字段**（结论与理由、评级、目标价、盈亏比、"
-             "建议仓位、事件描述、方法说明、画像叙述、跟踪总结等）必须基于数据包给出判断，"
-             "一律禁止写\"数据缺失\"；数组条数不足时用数据包里的真实素材补足，"
-             "禁止用\"数据缺失\"占位（字符串槽位绝不写对象/数组）：",
+             "原始指标缺失时写\"数据缺失\"；判断字段只引用数据包，产业链/弹性/技术结论保持简短。"
+             "缺少行业轮动数据时必须说明无法确认，不得把推测写成事实。必需数组按下限输出，"
+             "其它数组无事实可留空；不得用\"数据缺失\"凑数组（字符串槽位绝不写对象/数组）：",
              _skeleton_text(SHARD_KEYS[key])]
     hints = _shape_hints(SHARD_KEYS[key])
     if hints:
@@ -499,9 +526,9 @@ def shard_user(code: str, name: str, digest: str, date: str, key: str) -> str:
     return (f"标的：{name}（{code}）。分析基准日：{date or MISSING}。\n\n"
             f"【数据包】\n{digest}\n\n"
             f"【本次任务】根据数据包填写这一片 JSON：{SHARDS[key]}。"
-            "要求：结论先行、逻辑自洽；数字必须来自数据包；仅原始数据缺失才写\"数据缺失\"，"
-            "判断类字段必须给判断；近期动态优先用【近期动态】素材（研报/高管变动/股东户数）；"
-            "不要省略任何键，数组条数达到下限且不得用\"数据缺失\"占位，内容完整不截断。")
+            "要求：结论先行、数字有据；原始数据缺失才写\"数据缺失\"。行业轮动只依据所附轮动榜，"
+            "缺失时写明无法核实。近期舆情优先使用【近期动态】素材。不要省略键；必需数组达到下限，"
+            "可选数组无事实留空。每段最多2句，避免重复和泛化套话，不补未要求的交易建议。")
 
 
 # ---------------------------------------------------------------- 分片校验/重试/降级
@@ -632,7 +659,7 @@ FILL_CAP_MISSING_BLOCK = 0.4  # 任一整块缺失（整片降级）→ 结构�
 
 
 def _expected_slots() -> dict[str, list[tuple]]:
-    """schema 期望槽位：标量/嵌套子键各计 1 叶；数组按 MIN_LEN（缺省 1）× 条目键数展开。"""
+    """schema 期望槽位：标量/嵌套子键各计 1 叶；数组只按必需 MIN_LEN 展开。"""
     out: dict[str, list[tuple]] = {}
     for blk, spec in SCHEMA.items():
         slots: list[tuple] = []
@@ -640,7 +667,7 @@ def _expected_slots() -> dict[str, list[tuple]]:
             if isinstance(typ, dict):
                 slots.extend((key, sub, 1, None, False) for sub in typ)
             elif typ is list:
-                slots.append((key, None, MIN_LEN.get((blk, key), 1),
+                slots.append((key, None, MIN_LEN.get((blk, key), 0),
                               ITEM_KEYS.get((blk, key)), True))
             else:
                 slots.append((key, None, 1, None, False))
@@ -656,7 +683,7 @@ def fill_rate(content: Any) -> float:
 
     - 空 content → 0.0；任一整块缺席（缺键/非对象/空对象）→ 得分封顶 0.4
       （缺一片的分片永远过不了 0.5 门限，report_pipeline 只能 exit 2/1，绝不 exit 0）；
-    - 数组只看前 MIN_LEN 条（多写不扣分）；条目缺键/超范围值一律算未填充。
+    - 数组只统计 MIN_LEN 声明的必需条目；可选数组不影响填充率。
     """
     c = content if isinstance(content, dict) else {}
     total = filled = 0
