@@ -65,6 +65,24 @@ export function renderBuiltinDataCell(r: any, col: ColumnConfig): ReactNode | nu
       return <td key={col.id} className={`${numCls} ${priceColorClass(r.change_amount)}`}>{r.change_amount != null ? fmtPrice(r.change_amount) : '—'}</td>
     case 'amplitude':
       return <td key={col.id} className={numCls}>{r.amplitude != null ? `${(r.amplitude * 100).toFixed(2)}%` : '—'}</td>
+    // 股息率 (GM dy_lfy 上一财年, 小数制; 快照无该标的为 null → 「—」, 不显示 0)
+    case 'dividend_yield':
+      return (
+        <td key={col.id} className={numCls}>
+          {r.dividend_yield != null && Number.isFinite(r.dividend_yield)
+            ? `${(Number(r.dividend_yield) * 100).toFixed(2)}%`
+            : '—'}
+        </td>
+      )
+    // 股息率TTM (GM dy_ttm 滚动12月, 小数制; 备用列)
+    case 'dividend_yield_ttm':
+      return (
+        <td key={col.id} className={numCls}>
+          {r.dividend_yield_ttm != null && Number.isFinite(r.dividend_yield_ttm)
+            ? `${(Number(r.dividend_yield_ttm) * 100).toFixed(2)}%`
+            : '—'}
+        </td>
+      )
     case 'open':         return <td key={col.id} className={numCls}>{fmtMaybePrice(r.open)}</td>
     case 'high':         return <td key={col.id} className={numCls}>{fmtMaybePrice(r.high)}</td>
     case 'low':          return <td key={col.id} className={numCls}>{fmtMaybePrice(r.low)}</td>

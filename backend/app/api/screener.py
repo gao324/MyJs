@@ -55,6 +55,84 @@ def _safe(result_dict: dict) -> dict:
     return result_dict
 
 
+# ── 策略结果行股息率 (dividend_yield / dividend_yield_ttm 运行时列) ──────
+# 数据源: GM 估值截面 (stk_get_daily_valuation_pt, 免费函数), 由每日调度同步到
+# data/dividend_yields/part.parquet (见 app/services/dividend_yield_sync.py)。
+# 两个运行时列都是展示口径 (小数制, 前端经 fmtPct 转百分数, CONTRIBUTING §3.1),
+# 不写 strategy_cache, 只在响应前投影 (与 ext 列同一策略):
+#
+#   dividend_yield      「股息率」    : GM dy_lfy —— 股息率(上一财年 LFY)。
+#   dividend_yield_ttm  「股息率TTM」: GM dy_ttm —— 股息率(滚动 12 月)。
+#
+# 语义: GM 已按自己的价格/分红口径算好, 本层直接透传, 不再本地重算; 快照为
+# GM 最新交易日截面, 与策略结果 as_of 无关 (展示口径, 不参与回测)。GM 未同步/
+# 无该标的/取数异常 → None (前端「—」, fail-closed 不伪装成 0)。
+
+
+def _gm_dividend_yield_maps() -> dict[str, dict[str, float]]:
+    """GM 股息率截面 → {"lfly": {symbol: 小数}, "ttm": {symbol: 小数}}。
+
+    请求内由 _DividendYieldIndex 复用一次; 表缺失/读取失败 → 空 dict (全部 None)。
+    """
+    try:
+        from app.services.dividend_yield_sync import yield_maps
+        from app.config import settings
+        return yield_maps(settings.data_dir)
+    except Exception as e:  # noqa: BLE001 — 只读入口, 失败按无数据降级
+        logger.debug("gm dividend yields unavailable: %s", e)
+        return {"lfly": {}, "ttm": {}}
+
+
+class _DividendYieldIndex:
+    """请求级 GM 股息率投影: 每个请求只读一次本地截面, 两列共用同一份快照。"""
+
+    def __init__(self) -> None:
+        self._maps: dict[str, dict[str, float]] | None = None
+
+    def maps(self) -> dict[str, dict[str, float]]:
+        if self._maps is None:
+            self._maps = _gm_dividend_yield_maps()
+        return self._maps
+
+    def _project(self, row: dict) -> dict:
+        lfy = self.maps().get("lfly", {})
+        ttm = self.maps().get("ttm", {})
+        symbol = str(row.get("symbol"))
+        return {
+            **row,
+            "dividend_yield": lfy.get(symbol),
+            "dividend_yield_ttm": ttm.get(symbol),
+        }
+
+    def rows(self, rows: list[dict]) -> list[dict]:
+        if not rows:
+            return rows
+        return [self._project(r) if isinstance(r, dict) else r for r in rows]
+
+    def result(self, result_dict: dict) -> dict:
+        rows = result_dict.get("rows")
+        if not rows:
+            return result_dict
+        return {**result_dict, "rows": self.rows(rows)}
+
+    def results(self, results: dict[str, dict]) -> dict[str, dict]:
+        return {sid: self.result(r) if isinstance(r, dict) else r for sid, r in results.items()}
+
+    def symbol_rows(self, sym_map: dict) -> dict:
+        """{symbol: 行} → 投影 (今日曾命中行)。"""
+        return {
+            sym: self._project(row) if isinstance(row, dict) else row
+            for sym, row in sym_map.items()
+        }
+
+    def ever_rows(self, ever_rows: dict) -> dict:
+        """{策略: {symbol: 行}} → 投影 (今日曾命中行)。"""
+        return {
+            sid: self.symbol_rows(sym_map) if isinstance(sym_map, dict) else sym_map
+            for sid, sym_map in ever_rows.items()
+        }
+
+
 def _coverage_warnings(
     svc, as_of, *, engine=None, strategy_ids=None, params_map=None, overrides_map=None,
 ) -> list[str]:
@@ -348,7 +426,7 @@ def run_custom(req: CustomRequest, request: Request):
         safe_data["warnings"] = warnings
     # 投影取结果日分区 (与过滤同口径), 而非最新分区
     ext_values = _load_ext_value_maps(repo, req.ext_columns, as_of=str(as_of))
-    return _result_with_ext(safe_data, ext_values)
+    return _result_with_ext(_DividendYieldIndex().result(safe_data), ext_values)
 
 
 @router.post("/run_preset")
@@ -407,7 +485,8 @@ def run_preset(req: PresetRequest, request: Request):
             safe_data["warnings"] = warnings
         _update_cache_strategy(data_dir, str(as_of), req.strategy_id, safe_data)
 
-    return _result_with_ext(safe_data, ext_values)
+    # 股息率只在响应前投影: 缓存 payload 保持与 as_of 无关的原始行
+    return _result_with_ext(_DividendYieldIndex().result(safe_data), ext_values)
 
 
 def _cached_with_realtime(request: Request) -> dict:
@@ -466,7 +545,18 @@ def get_cached(
                 )
     result_dates.add(None)  # 无日期的结果 → 最新分区兜底
     maps_by_date = _ext_maps_for_dates(request.app.state.repo, ext_columns, result_dates)
-    return _cache_payload_with_ext(cached, maps_by_date)
+    payload = _cache_payload_with_ext(cached, maps_by_date)
+
+    # 股息率运行时列: 结果行与今日曾命中行各按其 as_of/date 取值 (与 ext 投影同款)
+    index = _DividendYieldIndex()
+    payload = dict(payload)
+    results = payload.get("results")
+    if isinstance(results, dict):
+        payload["results"] = index.results(results)
+    ever_rows = payload.get("today_ever_rows")
+    if isinstance(ever_rows, dict):
+        payload["today_ever_rows"] = index.ever_rows(ever_rows)
+    return payload
 
 
 @router.get("/cached-summary")
@@ -525,12 +615,13 @@ def get_cached_result(
 
     # 结果行按该策略结果的 as_of 日取值 (与过滤同口径); 今日曾命中行按行日期取值
     repo = request.app.state.repo
+    index = _DividendYieldIndex()
     result_date = raw_result.get("as_of")
     ext_values = _load_ext_value_maps(repo, ext_columns, as_of=str(result_date) if result_date else None)
     result = {
         "as_of": raw_result.get("as_of"),
         "strategy": strategy_id,
-        "rows": _rows_with_ext(raw_result.get("rows") or [], ext_values),
+        "rows": index.rows(_rows_with_ext(raw_result.get("rows") or [], ext_values)),
         "total": int(raw_result.get("total") or 0),
         "elapsed_ms": 0.0,
     }
@@ -544,11 +635,11 @@ def get_cached_result(
                 {row.get("date") for row in strategy_ever_rows.values() if isinstance(row, dict)}
                 | {result_date},
             )
-            ever_rows = {
+            ever_rows = index.symbol_rows({
                 symbol: _row_with_ext(row, _maps_for_date(ever_maps, row.get("date")), symbol=symbol)
                 for symbol, row in strategy_ever_rows.items()
                 if isinstance(row, dict)
-            }
+            })
 
     selected_symbols = {
         str(row["symbol"])
@@ -880,11 +971,11 @@ def run_all(request: Request, body: Optional[dict] = None):
             "skipped_unknown": skipped_unknown,
         }
 
-    # ext 投影取本次结果日分区 (与过滤同口径)
+    # ext 投影取本次结果日分区 (与过滤同口径); 股息率同为响应期投影 (不落缓存)
     ext_values = _load_ext_value_maps(repo, body.get("ext_columns"), as_of=str(as_of))
     return {
         "as_of": str(as_of),
-        "results": _results_with_ext(results, ext_values),
+        "results": _results_with_ext(_DividendYieldIndex().results(results), ext_values),
         "skipped_unknown": skipped_unknown,
     }
 

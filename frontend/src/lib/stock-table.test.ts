@@ -26,4 +26,16 @@ describe('getSortValue: 自选加入信息列', () => {
     expect(getSortValue({ pct_since_added: 0 }, builtinCol('pct_since_added'))).toBe(0)
     expect(getSortValue({}, builtinCol('pct_since_added'))).toBe(undefined)
   })
+
+  it('dividend_yield 透传数值 (GM 截面, 快照缺失由后端置 null)', () => {
+    expect(getSortValue({ dividend_yield: 0.0366 }, builtinCol('dividend_yield'))).toBe(0.0366)
+    expect(getSortValue({ dividend_yield: 0 }, builtinCol('dividend_yield'))).toBe(0)
+    expect(getSortValue({ dividend_yield: null }, builtinCol('dividend_yield'))).toBe(null)
+    expect(getSortValue({}, builtinCol('dividend_yield'))).toBe(undefined)
+  })
+
+  it('dividend_yield_ttm 透传数值 (备用列)', () => {
+    expect(getSortValue({ dividend_yield_ttm: 0.032 }, builtinCol('dividend_yield_ttm'))).toBe(0.032)
+    expect(getSortValue({}, builtinCol('dividend_yield_ttm'))).toBe(undefined)
+  })
 })

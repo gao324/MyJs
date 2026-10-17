@@ -755,6 +755,41 @@ class GmProvider:
             logger.warning("GM 财务 %s 拉取失败: %s", table, e)
         return pl.DataFrame()
 
+    # ---- daily valuation (股息率) ----
+    def get_daily_valuation(
+        self,
+        symbols: list[str],
+        fields: str = "dy_ttm,dy_lfy",
+        trade_date: str | None = None,
+    ) -> pl.DataFrame:
+        """GM 估值指标单日截面 (多标的一次拉取) → [symbol, trade_date, dy_ttm, dy_lfy]。
+
+        dy_ttm 股息率(滚动12月TTM)、dy_lfy 股息率(上一财年LFY), GM 量纲为 %。
+        北交所等映射失败的标的跳过; GM 不可用抛 GmError, 由调用方 fail-closed。
+        """
+        if not symbols:
+            return pl.DataFrame()
+        gm_symbols = sorted({g for s in symbols if (g := _to_gm(s))})
+        if not gm_symbols:
+            return pl.DataFrame()
+        rows = run_op(
+            "valuation_pt",
+            {"symbols": gm_symbols, "fields": fields, "trade_date": trade_date or None},
+            timeout_s=600.0,
+        )
+        out: list[dict] = []
+        for r in rows:
+            symbol = _to_internal(r.get("symbol"))
+            if not symbol:
+                continue
+            out.append({
+                "symbol": symbol,
+                "trade_date": _beijing_date(r.get("trade_date")),
+                "dy_ttm": _to_float(r.get("dy_ttm")),
+                "dy_lfy": _to_float(r.get("dy_lfy")),
+            })
+        return pl.DataFrame(out, infer_schema_length=None) if out else pl.DataFrame()
+
     @staticmethod
     def _fin_frame(rows: list[dict], gm_of: dict[str, str], fmap: dict[str, str]) -> pl.DataFrame:
         out = []

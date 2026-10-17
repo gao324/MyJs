@@ -67,6 +67,8 @@ export function getSortValue(r: any, col: ColumnConfig): any {
     case 'pct':           return r.rt_pct ?? r.change_pct
     case 'change_amount': return r.change_amount
     case 'amplitude':     return r.amplitude
+    case 'dividend_yield': return r.dividend_yield
+    case 'dividend_yield_ttm': return r.dividend_yield_ttm
     case 'open':          return r.open
     case 'high':          return r.high
     case 'low':           return r.low

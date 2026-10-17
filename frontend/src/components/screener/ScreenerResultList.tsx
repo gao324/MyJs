@@ -5,15 +5,18 @@
  * 外部行情 App (通达信 / 同花顺, 设置里二选一, 未配置则行不可点)。
  *
  * 字段口径与 ScreenerTable 一致: r.change_pct 为小数制, 经 fmtPct 转百分数
- * (CONTRIBUTING §3.1); 失效行 (今日曾命中、当前不命中) 用 opacity 弱化, 与表格同款处理。
+ * (CONTRIBUTING §3.1); 股息率为 GM 截面值 (小数制, 快照无该标的为 null → 「—」,
+ * 口径说明见 DIVIDEND_YIELD_HINT); 失效行 (今日曾命中、当前不命中) 用 opacity
+ * 弱化, 与表格同款处理。
  */
 import { ArrowUpRight } from 'lucide-react'
 import { fmtPct, priceColorClass } from '@/lib/format'
 import { boardTag } from '@/components/stock-table/primitives'
 import { launchStockExternal, useStockExternalConfig } from '@/components/StockExternalLinkButton'
+import { DIVIDEND_YIELD_HINT } from '@/lib/screener-columns'
 
 interface Props {
-  /** 展示行 (已由页面完成筛选 / 排序), 字段: symbol / name / change_pct / _expired */
+  /** 展示行 (已由页面完成筛选 / 排序), 字段: symbol / name / change_pct / dividend_yield / _expired */
   rows: any[]
 }
 
@@ -38,6 +41,9 @@ export function ScreenerResultList({ rows }: Props) {
           const rowCls = `flex items-center gap-2 px-3 py-2.5 border-b border-border/50 last:border-0 ${
             r._expired ? 'opacity-40' : ''
           }`
+          const dividendYield = r.dividend_yield != null && Number.isFinite(r.dividend_yield)
+            ? `${(Number(r.dividend_yield) * 100).toFixed(2)}%`
+            : '—'
           const body = (
             <>
               <div className="min-w-0 flex-1">
@@ -51,6 +57,12 @@ export function ScreenerResultList({ rows }: Props) {
                 </div>
                 <div className="mt-0.5 truncate text-[11px] text-secondary">{r.name || '—'}</div>
               </div>
+              <span
+                className="shrink-0 font-mono text-[10px] tabular-nums text-muted"
+                title={DIVIDEND_YIELD_HINT}
+              >
+                股息 {dividendYield}
+              </span>
               <span className={`shrink-0 font-mono text-[13px] font-medium tabular-nums ${pctCls}`}>
                 {fmtPct(r.change_pct)}
               </span>

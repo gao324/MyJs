@@ -62,18 +62,18 @@ def test_cached_result_returns_only_requested_rows_with_ext_and_strategy_members
             "strategy_a": {
                 "as_of": "2026-07-20",
                 "total": 1,
-                "rows": [{"symbol": "000001.SZ"}],
+                "rows": [{"symbol": "000001.SZ", "raw_close": 10.0}],
             },
             "strategy_b": {
                 "as_of": "2026-07-20",
                 "total": 2,
-                "rows": [{"symbol": "000001.SZ"}, {"symbol": "600000.SH"}],
+                "rows": [{"symbol": "000001.SZ", "raw_close": 10.0}, {"symbol": "600000.SH", "raw_close": 8.0}],
             },
         },
         "today_ever_rows": {
             "strategy_a": {
-                "000001.SZ": {"symbol": "000001.SZ"},
-                "000002.SZ": {"symbol": "000002.SZ"},
+                "000001.SZ": {"symbol": "000001.SZ", "raw_close": 10.0, "date": "2026-07-20"},
+                "000002.SZ": {"symbol": "000002.SZ", "raw_close": 5.0, "date": "2026-07-20"},
             },
         },
         "updated_at": 1,
@@ -84,6 +84,14 @@ def test_cached_result_returns_only_requested_rows_with_ext_and_strategy_members
         "_load_ext_value_maps",
         lambda *_args, **_kwargs: {"concept.concept": {"000001.SZ": "银行", "000002.SZ": "科技"}},
     )
+    monkeypatch.setattr(
+        screener_api,
+        "_gm_dividend_yield_maps",
+        lambda: {
+            "lfly": {"000001.SZ": 0.04, "000002.SZ": 0.02},
+            "ttm": {"000001.SZ": 0.05, "000002.SZ": 0.025},
+        },
+    )
 
     payload = screener_api.get_cached_result(
         "strategy_a",
@@ -92,6 +100,15 @@ def test_cached_result_returns_only_requested_rows_with_ext_and_strategy_members
     )
 
     assert payload["result"]["strategy"] == "strategy_a"
-    assert payload["result"]["rows"] == [{"symbol": "000001.SZ", "concept.concept": "银行"}]
+    assert payload["result"]["rows"] == [
+        {
+            "symbol": "000001.SZ", "raw_close": 10.0, "concept.concept": "银行",
+            "dividend_yield": 0.04, "dividend_yield_ttm": 0.05,
+        },
+    ]
     assert payload["today_ever_rows"]["000002.SZ"]["concept.concept"] == "科技"
+    assert payload["today_ever_rows"]["000002.SZ"]["dividend_yield"] == 0.02
+    assert payload["today_ever_rows"]["000002.SZ"]["dividend_yield_ttm"] == 0.025
     assert payload["strategy_ids_by_symbol"] == {"000001.SZ": ["strategy_a", "strategy_b"]}
+    # 运行时列只加在响应副本上, 缓存 payload 保持原样 (展示口径不入库)
+    assert "dividend_yield" not in cached["results"]["strategy_a"]["rows"][0]

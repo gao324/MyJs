@@ -44,6 +44,7 @@ def main() -> None:
             set_serv_addr,
             set_token,
             stk_get_daily_basic,
+            stk_get_daily_valuation_pt,
             stk_get_finance_deriv,
             stk_get_finance_prime,
             stk_get_fundamentals_balance,
@@ -121,6 +122,13 @@ def main() -> None:
                 for r in _frame_rows(df):
                     r["_gm_symbol"] = sym
                     rows.append(r)
+        elif op == "valuation_pt":
+            # 估值指标单日截面 (多标的一次): dy_ttm / dy_lfy 股息率 (量纲 %)
+            df = stk_get_daily_valuation_pt(
+                symbols=p["symbols"], fields=p["fields"],
+                trade_date=p.get("trade_date"), df=True,
+            )
+            rows = _frame_rows(df)
         else:
             print(json.dumps({"ok": False, "error": f"unknown op: {op}"}))
             return

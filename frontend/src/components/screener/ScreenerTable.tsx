@@ -10,6 +10,7 @@ import { Check, Plus, Eye, EyeOff, RefreshCw, ListCollapse, ListTree } from 'luc
 import type { KlineRow, MinuteKlineRow } from '@/lib/api'
 import { fmtPrice, formatExtNumber } from '@/lib/format'
 import type { ColumnConfig } from '@/lib/screener-columns'
+import { DIVIDEND_YIELD_HINT, DIVIDEND_YIELD_TTM_HINT } from '@/lib/screener-columns'
 import { getSignals, signalCls } from '@/lib/stock-table'
 import { boardTag, renderBuiltinDataCell } from '@/components/stock-table/primitives'
 import { resolveCandleConfig, resolveIntradayConfig } from '@/lib/list-columns'
@@ -407,6 +408,21 @@ export function ScreenerTable({
         renderHeaderContent={(col) => {
         if (col.source.type !== 'builtin') return undefined
         const key = col.source.key
+        // 股息率两列: GM 口径, 悬浮说明数据源与窗口 (LFY / TTM)
+        if (key === 'dividend_yield') {
+          return (
+            <span className="cursor-help border-b border-dotted border-muted/60" title={DIVIDEND_YIELD_HINT}>
+              {col.label}
+            </span>
+          )
+        }
+        if (key === 'dividend_yield_ttm') {
+          return (
+            <span className="cursor-help border-b border-dotted border-muted/60" title={DIVIDEND_YIELD_TTM_HINT}>
+              {col.label}
+            </span>
+          )
+        }
         // 日k 蜡烛图开关
         if (key === 'candle' && onToggleDailyKChart) {
           return (

@@ -1380,6 +1380,28 @@ def start_scheduler(repo: KlineRepository, capset: CapabilitySet) -> AsyncIOSche
         replace_existing=True,
     )
 
+    # GM 股息率截面 (估值指标 dy_ttm/dy_lfy): 策略结果列表「股息率」列的数据底座。
+    # GM 未配置/不可用时静默跳过 (消费方 fail-closed, 该列显示「—」)。
+    def _sync_dividend_yields():
+        from app.services.dividend_yield_sync import sync_dividend_yields
+        try:
+            summary = sync_dividend_yields(repo.store.data_dir)
+            if summary.get("rows"):
+                logger.info("GM 股息率同步完成: %d 标的", summary["rows"])
+            else:
+                logger.info("GM 股息率同步跳过: %s",
+                            summary.get("skipped") or "; ".join(summary.get("errors") or []))
+        except Exception as e:  # noqa: BLE001 — 数据能力弱依赖, 失败不影响主流程
+            logger.warning("GM 股息率同步失败: %s", e)
+
+    scheduler.add_job(
+        _sync_dividend_yields,
+        trigger=IntervalTrigger(hours=24),
+        id="sync_dividend_yields",
+        misfire_grace_time=7200,
+        replace_existing=True,
+    )
+
     # 定时复盘 (AI 大盘复盘报告): 工作日到点自动生成并归档。
     # 默认关闭 —— 仅当用户在复盘页开启时才注册 job。
     # 复用 recap_market_once(非流式) + market_recap_reports.save_report(落盘)。
