@@ -45,6 +45,10 @@ backend/data/**
 !backend/data/.gitkeep
 data/**
 !data/.gitkeep
+# 例外: 开源策略目录先解阻父目录, 再在下方用白名单逐文件放行
+!data/strategies/
+!data/strategies/custom/
+!data/strategies/composite/
 # data/ 下所有内容(含 ext_data 概念/行业)均不入库:
 #   - 用户运行时数据 (K线/财务/自选/回测等) 本就不该进 git
 #   - 概念/行业改为「首次启动自动从远程接口拉取」(见 app/services/ext_presets.py)
@@ -86,7 +90,13 @@ CLAUDE.md
 docs/zhihu/
 
 # ===== 用户自定义策略(私有,不开源) =====
-data/strategies/custom/
+# custom/ 下仅收录明确开源的内置策略, 其余保持私有
+data/strategies/custom/*
+!data/strategies/custom/custom_high_dividend.py
+!data/strategies/custom/custom_tdx_red_arrow.py
+# 组合策略引用上面两个子策略, 一并收录
+!data/strategies/composite/
+!data/strategies/composite/composite_mvarbsu5.py
 
 # ===== 临时 / 调试产物 =====
 backend._recheck*.py
