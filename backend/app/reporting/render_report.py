@@ -9,6 +9,7 @@ from app.reporting.render_report_loops import build_loop_slots
 from app.reporting.script_builder import build_script
 
 TEMPLATE = Path(__file__).with_name("templates") / "template_report.html"
+FULL_TEMPLATE = Path(__file__).with_name("templates") / "template_report_full.html"
 SLOT_PATTERN = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 SLOT_RE = SLOT_PATTERN  # 简报代码块中的旧名，同一正则
 
@@ -36,8 +37,13 @@ def _val(block: dict, *path, default=None):
     return cur
 
 
-def load_template() -> str:
-    with open(TEMPLATE, encoding="utf-8") as f:
+def load_template(path: Path | None = None) -> str:
+    with open(path or TEMPLATE, encoding="utf-8") as f:
+        return f.read()
+
+
+def load_full_template() -> str:
+    with open(FULL_TEMPLATE, encoding="utf-8") as f:
         return f.read()
 
 
@@ -46,8 +52,12 @@ def build_static_slots(content: dict, blocks: dict) -> dict[str, str]:
     hero = content.get("hero", {})
     name = str(meta.get("name") or "数据缺失")
     change = str(hero.get("change_pct") or "数据缺失")
+    from app.market_time import cn_today
+    from app.services.report_shards import dividend_yield
+
+    dy = dividend_yield(blocks if isinstance(blocks, dict) else {}, today=cn_today())
     slots = {
-        "PAGE_TITLE": f"{esc(name)} {esc(meta.get('code'))} · 深度研报",
+        "PAGE_TITLE": f"{esc(name)} {esc(meta.get('code'))} · 个股分析报告",
         "STOCK_NAME": esc(name),
         "STOCK_CODE": esc(meta.get("code")),
         "LOGO_CHAR": esc(name[:1]),
@@ -59,6 +69,9 @@ def build_static_slots(content: dict, blocks: dict) -> dict[str, str]:
         "HERO_META_2": _quality_meta(hero.get("quality_score")),
         "HERO_META_3": esc(hero.get("target_price")),
         "HERO_META_4": esc(hero.get("rr")),
+        "DIV_YIELD": (f"{esc(dy['pct'])}%" if dy.get("pct") is not None else "数据缺失"),
+        "DIV_TOTAL_CASH": (f"{esc(dy['total_cash'])}元"
+                           if dy.get("total_cash") is not None else "数据缺失"),
         "HERO_META_5": esc(hero.get("risk_level")),
         "HERO_TAGS": _tags(hero.get("tags") or []),
         "BIG_VERDICT": esc(_val(content, "conclusion", "big_verdict")),
@@ -126,9 +139,19 @@ def _load_css() -> str:
 
 
 def render(content: dict, blocks: dict) -> str:
-    html = load_template()
+    """六项简报（默认视图）。"""
+    return _render(TEMPLATE, content, blocks, compact=True)
+
+
+def render_full(content: dict, blocks: dict) -> str:
+    """完整版深度研报（保留原有全部章节）。"""
+    return _render(FULL_TEMPLATE, content, blocks, compact=False)
+
+
+def _render(template: Path, content: dict, blocks: dict, *, compact: bool) -> str:
+    html = load_template(template)
     slots = build_static_slots(content, blocks)
-    slots.update(build_loop_slots(content, blocks))
+    slots.update(build_loop_slots(content, blocks, compact=compact))
     for k, v in slots.items():
         html = html.replace("{{" + k + "}}", v)
     return html

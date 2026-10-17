@@ -3,14 +3,15 @@
 路由前缀: /api/stock-reports
   POST /generate                 触发生成(同 symbol 防重)
   GET  /{job_id}                 任务状态(阶段/进度/错误/报告 id)
-  GET  /{job_id}/html            报告正文(text/html)
+  GET  /{job_id}/html            六项简报正文(text/html, 默认视图)
+  GET  /{job_id}/full-html       完整版报告(仅在终验通过时存在)
   GET  ?symbol=                  历史报告列表
 """
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -27,7 +28,7 @@ class GenerateRequest(BaseModel):
 
 
 @router.post("/generate")
-async def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest, request: Request):
     """触发生成; 同 symbol 已有 running 任务时返回已有任务(防重)。"""
     symbol = (req.symbol or "").strip().upper()
     if not symbol:
@@ -36,12 +37,13 @@ async def generate(req: GenerateRequest):
     if running:
         return {"job": running, "deduped": True}
     job = stock_report_jobs.start(symbol, name="")
+    repo = getattr(request.app.state, "repo", None)
 
     def _runner(j):
         # pipeline 模块在调用时才导入(Task 13 提供), 本模块不做导入期依赖
         from app.services import stock_report_pipeline
 
-        return stock_report_pipeline.run_report_job(j)
+        return stock_report_pipeline.run_report_job(j, repo)
 
     stock_report_jobs._spawn(job, _runner)
     return {"job": job, "deduped": False}
@@ -58,13 +60,27 @@ def get_status(job_id: str):
 
 @router.get("/{job_id}/html", response_class=HTMLResponse)
 def get_html(job_id: str):
-    """报告正文; 元数据与文件必须同时存在, 否则 404/410。"""
+    """六项简报正文(默认视图); 元数据与文件必须同时存在, 否则 404/410。"""
     record = stock_report_store.get_report(job_id)
     if not record:
         raise HTTPException(404, "报告不存在")
     path = stock_report_store.html_path(job_id)
     if not path.exists():
         raise HTTPException(410, "报告文件已不存在(可能已被清理)")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
+@router.get("/{job_id}/full-html", response_class=HTMLResponse)
+def get_full_html(job_id: str):
+    """完整版正文; 降级产出或历史报告没有完整版时返回 404。"""
+    record = stock_report_store.get_report(job_id)
+    if not record:
+        raise HTTPException(404, "报告不存在")
+    if not record.get("full_available", False):
+        raise HTTPException(404, "该报告没有完整版(降级产出或历史报告)")
+    path = stock_report_store.full_html_path(job_id)
+    if not path.exists():
+        raise HTTPException(410, "完整版文件已不存在(可能已被清理)")
     return HTMLResponse(path.read_text(encoding="utf-8"))
 
 

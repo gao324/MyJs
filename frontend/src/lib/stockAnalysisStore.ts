@@ -31,9 +31,10 @@ export interface ActiveTask {
   savedReportId?: string
   doneAt?: number
   dismissed?: boolean
-  /** 深度研报引擎(done 事件携带): 报告 id / 新标签页链接 / 是否降级产出 */
+  /** 研报引擎(done 事件携带): 报告 id / 简报链接 / 完整版链接 / 是否降级产出 */
   reportId?: string
   reportUrl?: string
+  fullReportUrl?: string
   degraded?: boolean
 }
 
@@ -217,6 +218,7 @@ async function runStream(id: string, symbol: string, _name: string, focus: strin
             phase: 'done',
             reportId: chunk.report_id,
             reportUrl: chunk.report_url,
+            fullReportUrl: chunk.full_report_url,
             degraded: chunk.degraded,
           })
           break

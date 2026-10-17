@@ -21,6 +21,7 @@ def _isolated_jobs():
 def client(monkeypatch, tmp_path):
     monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path, raising=False)
     app = FastAPI()
+    app.state.repo = object()
     app.include_router(api_mod.router)
     return TestClient(app)
 
@@ -40,6 +41,28 @@ def test_generate_then_status(client, monkeypatch):
     again = client.post("/api/stock-reports/generate", json={"symbol": "600519.SH"})
     assert again.json()["job"]["id"] == job["id"]  # 防重
     assert again.json()["deduped"] is True
+
+
+def test_generate_passes_repository_to_rotation_context(client, monkeypatch):
+    import asyncio
+
+    from app.services import stock_report_pipeline
+
+    received = []
+    dispatched = {}
+
+    async def _fake_run(job, repo=None):
+        received.append(repo)
+
+    def _capture_runner(job, runner):
+        dispatched.update(job=job, runner=runner)
+
+    monkeypatch.setattr(stock_report_pipeline, "run_report_job", _fake_run)
+    monkeypatch.setattr(stock_report_jobs, "_spawn", _capture_runner)
+    response = client.post("/api/stock-reports/generate", json={"symbol": "600519.SH"})
+    assert response.status_code == 200
+    asyncio.run(dispatched["runner"](dispatched["job"]))
+    assert received == [client.app.state.repo]
 
 
 def test_generate_rejects_blank_symbol(client):
@@ -63,6 +86,27 @@ def test_html_endpoint_missing_report_is_404(client):
     assert client.get("/api/stock-reports/sr-missing/html").status_code == 404
 
 
+def test_full_html_endpoint_serves_saved_full_report(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path)
+    meta = stock_report_store.save_report(
+        {"symbol": "600519.SH", "name": "贵州茅台", "status": "done",
+         "full_available": True}, "<html>brief</html>")
+    full = stock_report_store.full_html_path(meta["id"])
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text("<html>full</html>", encoding="utf-8")
+    res = client.get(f"/api/stock-reports/{meta['id']}/full-html")
+    assert res.status_code == 200 and res.text == "<html>full</html>"
+
+
+def test_full_html_endpoint_rejects_degraded_and_unknown(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(stock_report_store, "_base_dir", lambda: tmp_path)
+    assert client.get("/api/stock-reports/sr-missing/full-html").status_code == 404
+    meta = stock_report_store.save_report(
+        {"symbol": "600519.SH", "name": "贵州茅台", "status": "degraded"},
+        "<html>x</html>")
+    assert client.get(f"/api/stock-reports/{meta['id']}/full-html").status_code == 404
+
+
 def test_html_path_rejects_traversal():
     import pytest
 
@@ -71,6 +115,9 @@ def test_html_path_rejects_traversal():
     with pytest.raises(ValueError):
         stock_report_store.html_path("")
     assert stock_report_store.html_path("sr123").name == "stock-report-sr123.html"
+    with pytest.raises(ValueError):
+        stock_report_store.full_html_path("../../etc/passwd")
+    assert stock_report_store.full_html_path("sr123").name == "stock-report-sr123-full.html"
 
 
 def test_list_reports_filters_by_symbol(client, monkeypatch, tmp_path):

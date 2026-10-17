@@ -1,7 +1,8 @@
 """研报存储 — 元数据 JSON(JsonReportStore 模式) + HTML 文件, 上限 50 份。
 
 落盘: data/user_data/stock_reports.json (元数据, 原子写)
-      data/user_data/stock_reports/stock-report-{id}.html (正文)
+      data/user_data/stock_reports/stock-report-{id}.html (六项简报, 默认视图)
+      data/user_data/stock_reports/stock-report-{id}-full.html (完整版, 可选)
 超限裁剪时同步删除对应 HTML 文件。
 """
 from __future__ import annotations
@@ -32,13 +33,23 @@ def _meta_path() -> Path:
     return _base_dir() / "stock_reports.json"
 
 
-def html_path(report_id: str) -> Path:
+def _report_file_path(report_id: str, suffix: str = "") -> Path:
     rid = str(report_id or "").strip()
     if not _SAFE_ID_RE.match(rid):
         # fail-closed: id 只允许字母数字/下划线/连横线, 防路径穿越;
         # 服务端生成的 id(sr<毫秒戳>/draft-<hex>)天然满足。
         raise ValueError(f"非法报告 id: {report_id!r}")
-    return _base_dir() / "stock_reports" / f"stock-report-{rid}.html"
+    return _base_dir() / "stock_reports" / f"stock-report-{rid}{suffix}.html"
+
+
+def html_path(report_id: str) -> Path:
+    """六项简报(默认视图)文件路径。"""
+    return _report_file_path(report_id)
+
+
+def full_html_path(report_id: str) -> Path:
+    """完整版报告文件路径。"""
+    return _report_file_path(report_id, "-full")
 
 
 def _load() -> list[dict]:
@@ -64,10 +75,12 @@ def save_report(meta: dict, html: str) -> dict:
         atomic_write_text(path, html)
         records = [record, *_load()]
         for stale in records[MAX_REPORTS:]:
+            stale_id = str(stale.get("id") or "")
             try:
-                html_path(str(stale.get("id") or "")).unlink(missing_ok=True)
+                html_path(stale_id).unlink(missing_ok=True)
+                full_html_path(stale_id).unlink(missing_ok=True)
             except OSError:
-                logger.warning("[report-store] 旧报告删除失败: %s", stale.get("id"))
+                logger.warning("[report-store] 旧报告删除失败: %s", stale_id)
         records = records[:MAX_REPORTS]
         atomic_write_text(_meta_path(), json.dumps(records, ensure_ascii=False, indent=1))
         return record

@@ -42,7 +42,12 @@ function getMeta(task: ActiveTask | HistoryReport | null) {
 }
 function getReport(task: ActiveTask | HistoryReport | null) {
   if (!task || !('reportUrl' in task) || !task.reportUrl) return null
-  return { id: task.reportId, url: task.reportUrl, degraded: task.degraded }
+  return {
+    id: task.reportId,
+    url: task.reportUrl,
+    fullUrl: task.fullReportUrl,
+    degraded: task.degraded,
+  }
 }
 
 export function StockAnalysisDialog({ task, mode, minimized }: Props) {
@@ -166,11 +171,19 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
               <div className="mb-3 rounded-xl border border-sky-400/30 bg-sky-500/10 p-3">
                 <div className="flex items-center gap-2">
                   <LineChart className="h-4 w-4 text-sky-300 shrink-0" />
-                  <span className="text-xs font-medium text-foreground">深度研报已生成</span>
-                  <a href={report.url} target="_blank" rel="noreferrer"
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25 transition-colors">
-                    打开报告
-                  </a>
+                  <span className="text-xs font-medium text-foreground">个股分析报告已生成</span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <a href={report.url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/40 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/25 transition-colors">
+                      打开简报
+                    </a>
+                    {report.fullUrl && (
+                      <a href={report.fullUrl} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/25 px-3 py-1.5 text-xs font-medium text-sky-300/90 hover:bg-sky-500/15 transition-colors">
+                        完整版
+                      </a>
+                    )}
+                  </div>
                 </div>
                 {report.degraded && (
                   <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-300/90">
@@ -188,8 +201,8 @@ export function StockAnalysisDialog({ task, mode, minimized }: Props) {
                   </div>
                   <Loader2 className="absolute -inset-1 h-12 w-12 text-sky-400/40 animate-spin" style={{ animationDuration: '3s' }} />
                 </div>
-                <div className="text-xs text-secondary">深度研报生成中…</div>
-                <div className="text-[10px] text-muted">数据采集 → 七分片分析 → 模板渲染,通常 3–8 分钟,请保持页面打开</div>
+                <div className="text-xs text-secondary">个股分析报告生成中…</div>
+                <div className="text-[10px] text-muted">数据采集 → 七分片分析 → 简报/完整版渲染,通常 3–8 分钟,请保持页面打开</div>
               </div>
             )}
 

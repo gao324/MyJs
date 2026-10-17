@@ -10,7 +10,8 @@ services:
         CODEX_CLI_VERSION: ${CODEX_CLI_VERSION:-0.144.3}
     container_name: TickFlow_Stock_Panel
     ports:
-      - "${HOST:-0.0.0.0}:${PORT:-3018}:3018"
+      # APP_PORT 优先(部署实例用, dev.ps1 不读该变量), 兼容旧的 PORT 变量
+      - "${HOST:-0.0.0.0}:${APP_PORT:-${PORT:-3018}}:3018"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -25,6 +26,8 @@ services:
       - CODEX_DOCKER_HOST=host.docker.internal
     volumes:
       - ./data:/app/data
+      # Linux 容器专属 GM 数据环境: 独立卷, 避免与宿主机 Windows 版 data/gm-env 冲突
+      - gm-env:/app/data/gm-env
       - ./tiers.yaml:/app/tiers.yaml:ro
       # 保留原始 dotenv 值供首次密码初始化读取，避免 Compose 展开密码中的 $VAR。
       - ./.env:/app/.env:ro
@@ -32,3 +35,6 @@ services:
       # Windows PowerShell/CMD 下 HOME 常未设置, 可通过 .env 里 CODEX_HOME_HOST 覆盖。
       - ${CODEX_HOME_HOST:-${HOME}/.codex}:/root/.codex:ro
     restart: unless-stopped
+
+volumes:
+  gm-env:

@@ -40,11 +40,29 @@ async function renderDialog(task: ActiveTask) {
 }
 
 describe('StockAnalysisDialog 研报完成态', () => {
-  it('done 事件带 reportUrl 时渲染打开报告按钮', async () => {
+  it('done 事件带 reportUrl 时渲染打开简报按钮', async () => {
     await renderDialog(doneTask({ reportId: 'sr1', reportUrl: '/api/stock-reports/sr1/html' }))
     const link = host.querySelector<HTMLAnchorElement>('a[href="/api/stock-reports/sr1/html"]')
     expect(link).not.toBeNull()
-    expect(link!.textContent).toContain('打开报告')
+    expect(link!.textContent).toContain('打开简报')
+  })
+
+  it('done 事件带 full_report_url 时渲染完整版入口', async () => {
+    await renderDialog(doneTask({
+      reportId: 'sr1',
+      reportUrl: '/api/stock-reports/sr1/html',
+      fullReportUrl: '/api/stock-reports/sr1/full-html',
+    }))
+    const link = host.querySelector<HTMLAnchorElement>('a[href="/api/stock-reports/sr1/full-html"]')
+    expect(link).not.toBeNull()
+    expect(link!.textContent).toContain('完整版')
+  })
+
+  it('降级产出没有完整版时不渲染入口', async () => {
+    await renderDialog(doneTask({
+      reportId: 'sr1', reportUrl: '/api/stock-reports/sr1/html', degraded: true,
+    }))
+    expect(host.querySelector('a[href="/api/stock-reports/sr1/full-html"]')).toBeNull()
   })
 
   it('降级报告同时显示降级提示', async () => {
@@ -56,7 +74,7 @@ describe('StockAnalysisDialog 研报完成态', () => {
 
   it('旧引擎(done 无 reportUrl)不渲染按钮', async () => {
     await renderDialog(doneTask())
-    const links = [...host.querySelectorAll('a')].filter(a => a.textContent?.includes('打开报告'))
+    const links = [...host.querySelectorAll('a')].filter(a => a.textContent?.includes('打开简报'))
     expect(links.length).toBe(0)
   })
 })

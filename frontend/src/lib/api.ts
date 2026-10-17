@@ -3657,7 +3657,8 @@ export const api = {
   /**
    * AI 个股分析 — 流式调用(NDJSON,与财务分析同协议)。
    * meta 里额外带 levels(关键价位)供图表回放;
-   * 研报引擎的 done 事件额外带 report_id / report_url / degraded。
+   * 研报引擎的 done 事件额外带 report_id / report_url / full_report_url / degraded:
+   * report_url 是六项简报(默认视图), full_report_url 是完整版(降级时为 undefined)。
    */
   async *stockAnalyzeStream(symbol: string, focus?: string): AsyncGenerator<{
     type: 'meta' | 'delta' | 'error' | 'done' | 'ping'
@@ -3669,6 +3670,7 @@ export const api = {
     message?: string
     report_id?: string
     report_url?: string
+    full_report_url?: string
     degraded?: boolean
   }> {
     const res = await fetch('/api/stock-analysis/analyze', {

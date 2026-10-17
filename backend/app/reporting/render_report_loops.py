@@ -46,7 +46,7 @@ def _num(v: Any):
 
 MISS = "数据缺失"
 
-#: 47 个循环槽全名（与模板一一对应，禁止改名/新增/删除）。
+#: 模板循环槽全名。未在紧凑版模板展示的历史槽保留，避免不必要地改动内部契约。
 LOOP_SLOT_NAMES = (
     "CHAIN_JUDGMENT", "CHAIN_NODES", "CHAIN_PROFIT", "CHAIN_TREND",
     "COMPARE_ENGINES", "COMPARE_ROWS",
@@ -56,6 +56,8 @@ LOOP_SLOT_NAMES = (
     "MACRO_CONTRADICTION", "MACRO_CYCLE", "MACRO_POLICY",
     "MISSION_CYCLE", "MISSION_STYLE", "MISSION_TARGET", "MISSION_THESIS",
     "NEWS_ITEMS", "PROFILE_INFO_ROWS",
+    "DIVIDEND_SUMMARY", "FIN_HEADERS", "HOLDER_ROWS", "ROTATION_SUMMARY",
+    "NEWS_SENTIMENT_SUMMARY", "TECH_OVERVIEW",
     "QUALITY_BADGE", "QUALITY_NEGATIVES", "QUALITY_POSITIVES", "QUALITY_SCORES",
     "RISK_ROWS", "RISK_STOP_SIGNALS",
     "TECH_FUNDS", "TECH_LEVELS", "TECH_MOMENTUM", "TECH_PATTERNS",
@@ -111,14 +113,15 @@ def tech_from_blocks(blocks: dict) -> dict:
     blocks = blocks if isinstance(blocks, dict) else {}
     ind = blocks.get("technical_indicators") or []
     kline = blocks.get("kline_daily") or []
+    if not isinstance(kline, list):
+        kline = []
     sig = blocks.get("technical_signals") or {}
     latest = ind[-1] if ind else {}
     if not isinstance(latest, dict):
         latest = {}
     closes: list = []
     volumes: list = []
-    # 边界归一化（评审 Finding 修复）：close/volume 逐值经 _num，
-    # nan/inf/字符串/None 一律丢弃（= 缺失值），下游只拿到有限 float。
+    # 边界归一化：nan/inf/字符串/None 均视为缺失，不能拿旧值冒充最新行情。
     for r in kline:
         if not isinstance(r, dict):
             continue
@@ -138,6 +141,48 @@ def tech_from_blocks(blocks: dict) -> dict:
             return None
         # 除法结果非有限（如极端小基数）也按缺失降级，绝不返回 nan/±inf。
         return round(m, 2) if math.isfinite(m) else None
+
+    half_year_window = 0
+    half_year_change = None
+    if len(kline) >= 121:
+        close_window = [_num(r.get("close")) if isinstance(r, dict) else None
+                        for r in kline[-121:]]
+        if all(value is not None for value in close_window):
+            half_year_window = 120
+    elif len(kline) > 1:
+        close_window = [_num(r.get("close")) if isinstance(r, dict) else None
+                        for r in kline]
+        if all(value is not None for value in close_window):
+            half_year_window = len(close_window) - 1
+    if half_year_window:
+        base_index = -half_year_window - 1
+        base = close_window[base_index]
+        if base:
+            value = (close_window[-1] / base - 1) * 100
+            half_year_change = round(value, 2) if math.isfinite(value) else None
+
+    price_range = None
+    if len(kline) >= 20:
+        recent_rows = kline[-20:]
+        lows = [_num(r.get("low")) if isinstance(r, dict) else None for r in recent_rows]
+        highs = [_num(r.get("high")) if isinstance(r, dict) else None for r in recent_rows]
+        if all(value is not None for value in (*lows, *highs)):
+            price_range = (min(lows), max(highs))
+
+    latest_volume = avg_prior_volume = volume_ratio = None
+    if len(kline) >= 6:
+        recent_volumes = [
+            _num(r.get("volume")) if isinstance(r, dict) else None
+            for r in kline[-6:]
+        ]
+        if all(value is not None for value in recent_volumes):
+            latest_volume = recent_volumes[-1]
+            avg_prior_volume = sum(recent_volumes[:-1]) / 5
+            if avg_prior_volume > 0:
+                volume_ratio = latest_volume / avg_prior_volume
+                if not math.isfinite(volume_ratio):
+                    volume_ratio = None
+    holder_trend = _holder_count_trend(blocks.get("gdhs"))
 
     if not latest:
         signals = {k: MISS for k in ("MACD", "KDJ", "RSI", "BOLL", "MA", "VOL")}
@@ -176,7 +221,14 @@ def tech_from_blocks(blocks: dict) -> dict:
         "latest": latest,
         "closes": closes,
         "volumes": volumes,
-        "momentum": {w: mom(w) for w in (5, 10, 20, 60)},
+        "momentum": {w: mom(w) for w in (5, 10, 20, 60, 120)},
+        "half_year_window": half_year_window,
+        "half_year_change": half_year_change,
+        "price_range_20": price_range,
+        "latest_volume": latest_volume,
+        "avg_prior_volume": avg_prior_volume,
+        "volume_ratio": volume_ratio,
+        "holder_trend": holder_trend,
         "signals": signals,
     }
 
@@ -311,8 +363,9 @@ def _dividend_info_rows(blocks: dict) -> list[tuple[str, str]]:
     股息率来自 `report_shards.dividend_yield`（分红块 ÷ 现价），不依赖 LLM 输出；
     无分红数据时返回空列表——不硬塞一行"数据缺失"制造噪音。
     """
+    from app.market_time import cn_today
     from app.services.report_shards import dividend_yield
-    dy = dividend_yield(blocks if isinstance(blocks, dict) else {})
+    dy = dividend_yield(blocks if isinstance(blocks, dict) else {}, today=cn_today())
     if dy.get("pct") is None:
         return []
     rows = [("股息率", f"{dy['pct']}%")]
@@ -321,10 +374,13 @@ def _dividend_info_rows(blocks: dict) -> list[tuple[str, str]]:
     return rows
 
 
-def _news_items(content: dict) -> str:
-    items = _v(content, "news", "items", default=[]) or []
-    if not isinstance(items, list) or not items:
-        return f'<div class="news-item">{MISS}</div>'
+def _news_items(content: dict, limit: int | None = None) -> str:
+    items = _drop_placeholder_rows(
+        _v(content, "news", "items", default=[]), ("text",))
+    if limit is not None:
+        items = items[:limit]
+    if not items:
+        return '<div class="news-item">近期未获取到可核实的舆情素材</div>'
     color = {"利好": "var(--red-up)", "利空": "var(--green-down)",
              "中性": "var(--text-muted)"}
     cls = {"利好": "bullish", "利空": "bearish", "中性": "neutral"}
@@ -357,13 +413,139 @@ def _profile_info_rows(content: dict, blocks: dict) -> str:
     return "".join(f"<dt>{_esc(k)}</dt><dd>{_esc(v)}</dd>" for k, v in pairs)
 
 
-# TODO(2027-01)：_FIN_YEARS 硬编码 FY2021–FY2025，FY2026 年报披露后需改为从数据推导（控制方裁定暂缓，见最终交代）
+def _dividend_summary(blocks: dict) -> str:
+    from app.market_time import cn_today
+    from app.services.report_shards import dividend_yield
+
+    dy = dividend_yield(blocks if isinstance(blocks, dict) else {}, today=cn_today())
+    if dy.get("latest_cash") is None:
+        return "最近分红记录：数据缺失或未检出"
+    day = _esc(dy.get("latest_date") or MISS)
+    cash = _esc(dy["latest_cash"])
+    return f"最近分红记录：{day}，每10股派息 {cash} 元"
+
+
+def _holder_rows(blocks: dict) -> str:
+    rows = blocks.get("top10") if isinstance(blocks, dict) else None
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        name = next((row.get(k) for k in ("股东名称", "股东", "股东全称", "名称")
+                     if row.get(k)), None)
+        if not name:
+            continue
+        ratio = next((row.get(k) for k in ("持股比例", "持股比例(%)", "占总股本比例")
+                      if row.get(k) not in (None, "")), None)
+        out.append(f"<li>{_esc(name)}" + (f"（持股 {_esc(ratio)}）" if ratio is not None else "") + "</li>")
+        if len(out) == 5:
+            break
+    return "".join(out) or f"<li>{MISS}</li>"
+
+
+def _holder_count_trend(rows: Any) -> str:
+    valid = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        day = str(row.get("股东户数统计截止日") or row.get("统计截止日") or "").strip()
+        digits = "".join(ch for ch in day if ch.isdigit())
+        if len(digits) >= 8:
+            day = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+        count = _num(row.get("股东户数-本次"))
+        if count is None:
+            count = _num(row.get("股东户数"))
+        if day and count is not None:
+            valid.append((day, count))
+    latest_by_day: dict[str, float] = {}
+    for day, count in valid:
+        latest_by_day[day] = count
+    ordered = sorted(latest_by_day.items(), reverse=True)
+    if not ordered:
+        return MISS
+    day, count = ordered[0]
+    current = f"{day} 股东户数 {count:,.0f} 户"
+    if len(ordered) < 2 or ordered[1][1] == 0:
+        return current
+    change = (count / ordered[1][1] - 1) * 100
+    if not math.isfinite(change):
+        return current
+    return f"{current}，较上期 {change:+.2f}%"
+
+
+def _rotation_summary(blocks: dict) -> str:
+    rotation = blocks.get("_industry_rotation") if isinstance(blocks, dict) else None
+    if not isinstance(rotation, dict) or not rotation.get("available"):
+        return "当前未获取到行业/概念轮动数据，热点关联无法核实"
+    parts = []
+    for key, label in (("industry", "行业"), ("concept", "概念")):
+        rows = rotation.get(key)
+        top = rows[:3] if isinstance(rows, list) else []
+        if not top:
+            parts.append(f"{label}轮动：{MISS}")
+            continue
+        values = "、".join(
+            f"{_esc(row.get('name'))}({_esc(row.get('change_pct'))}%)"
+            for row in top if isinstance(row, dict)
+        )
+        window = rotation.get(f"{key}_window") or 0
+        parts.append(f"近{window}个交易日{label}平均涨幅靠前：{values}")
+    as_of = rotation.get("as_of")
+    if as_of:
+        parts.append(f"截至 { _esc(as_of) }")
+    return "；".join(parts)
+
+
+def _news_sentiment_summary(content: dict) -> str:
+    items = _drop_placeholder_rows(
+        _v(content, "news", "items", default=[]), ("text",))[:3]
+    if not items:
+        return "近期舆情素材不足，无法判断整体倾向"
+    counts = {label: sum(1 for item in items if item.get("sentiment") == label)
+              for label in ("利好", "利空", "中性")}
+    return f"近{len(items)}条：利好 {counts['利好']} · 利空 {counts['利空']} · 中性 {counts['中性']}"
+
+
+def _tech_overview(tech: dict) -> str:
+    window = tech.get("half_year_window") or 0
+    change = tech.get("half_year_change")
+    if change is None or not window:
+        half_year = MISS
+    else:
+        suffix = "（约半年）" if window >= 110 else "（样本不足半年）"
+        half_year = f"近{window}个交易日{suffix} {change:+.2f}%"
+
+    price_range = tech.get("price_range_20")
+    if isinstance(price_range, tuple) and len(price_range) == 2:
+        band = f"{price_range[0]:.2f}–{price_range[1]:.2f}"
+    else:
+        band = MISS
+
+    ratio = tech.get("volume_ratio")
+    if ratio is None:
+        volume = MISS
+    else:
+        state = "放量" if ratio >= 1.2 else "缩量" if ratio <= 0.8 else "量能持平"
+        volume = f"{state}（最新量/前5日均量 {ratio:.2f} 倍）"
+
+    return (f'<div class="metric-grid">'
+            f'<div><span>近半年涨幅</span><strong>{_esc(half_year)}</strong></div>'
+            f'<div><span>近20交易日价格区间</span><strong>{_esc(band)}</strong></div>'
+            f'<div><span>近期量能</span><strong>{_esc(volume)}</strong></div>'
+            f'<div><span>筹码参考·股东户数</span><strong>{_esc(tech.get("holder_trend") or MISS)}</strong></div>'
+            f'</div>')
+
+
+# 使用最近三个已完成年度；报告期切换时需将年份改为动态推导。
 _FIN_ORDER = ("营业总收入", "归母净利润", "扣非净利润", "毛利率",
               "净资产收益率(ROE)")
 _FIN_YEARS = (("20251231", "FY2025"), ("20241231", "FY2024"),
-              ("20231231", "FY2023"), ("20221231", "FY2022"),
-              ("20211231", "FY2021"))
+              ("20231231", "FY2023"))
 _FIN_MONEY = {"营业总收入", "归母净利润", "扣非净利润"}
+
+
+def _fin_headers() -> str:
+    return "<th>指标</th>" + "".join(f"<th>{label}</th>" for _, label in _FIN_YEARS)
 
 
 def _fin_rows(blocks: dict) -> str:
@@ -481,12 +663,12 @@ def _block_card(text: Any) -> str:
             f"color:var(--text-secondary);line-height:1.8;\">{_esc(text)}</div>")
 
 
-def _quality_scores(content: dict) -> str:
+def _quality_scores(content: dict, limit: int | None = None) -> str:
     scores = _v(content, "quality", "scores", default=[]) or []
     if not isinstance(scores, list) or not scores:
         return MISS
     out = []
-    for s in scores:
+    for s in (scores[:limit] if limit is not None else scores):
         if not isinstance(s, dict):
             continue
         out.append(_score_bar(s.get("dim"), s.get("score"), s.get("reason")))
@@ -876,15 +1058,22 @@ def _tech_plan_rows(content: dict) -> str:
         f"<td>{_esc(p.get('position'))}</td></tr>" for p in plan)
 
 
-def build_loop_slots(content: dict, blocks: dict) -> dict[str, str]:
-    """构建全部 47 个循环槽。content/blocks 缺失时降级为“数据缺失”，不抛错。"""
+def build_loop_slots(content: dict, blocks: dict, compact: bool = True) -> dict[str, str]:
+    """构建全部循环槽；compact 仅截断简报展示条数（评分/舆情），不改完整版内容。"""
+    score_limit = 3 if compact else None
     content = content if isinstance(content, dict) else {}
     blocks = blocks if isinstance(blocks, dict) else {}
     tech = tech_from_blocks(blocks)
     tech["_kline"] = blocks.get("kline_daily") or []
     slots = {
-        "NEWS_ITEMS": _news_items(content),
+        "NEWS_ITEMS": _news_items(content, score_limit),
         "PROFILE_INFO_ROWS": _profile_info_rows(content, blocks),
+        "DIVIDEND_SUMMARY": _dividend_summary(blocks),
+        "FIN_HEADERS": _fin_headers(),
+        "HOLDER_ROWS": _holder_rows(blocks),
+        "ROTATION_SUMMARY": _rotation_summary(blocks),
+        "NEWS_SENTIMENT_SUMMARY": _news_sentiment_summary(content),
+        "TECH_OVERVIEW": _tech_overview(tech),
         "FIN_ROWS": _fin_rows(blocks),
         "MISSION_TARGET": _esc(_v(content, "mission", "target")),
         "MISSION_CYCLE": _esc(_v(content, "mission", "cycle")),
@@ -901,7 +1090,7 @@ def build_loop_slots(content: dict, blocks: dict) -> dict[str, str]:
                                       default=[]), "✅ "),
         "QUALITY_NEGATIVES": _li(_v(content, "quality", "negatives",
                                       default=[]), "⚠️ "),
-        "QUALITY_SCORES": _quality_scores(content),
+        "QUALITY_SCORES": _quality_scores(content, score_limit),
         "QUALITY_BADGE": (
             f'<div class="rating-callout" style="margin-top:12px;'
             f"background:rgba(212,168,83,0.08);border-left:4px solid var(--gold);"
